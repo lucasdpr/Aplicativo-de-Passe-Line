@@ -6,13 +6,14 @@ import { useLiveQuery } from "dexie-react-hooks";
 import {
   ArrowLeft,
   ShieldCheck,
+  ShieldMinus,
   KeyRound,
   Users,
   History,
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
-import { useAuthStore, resetarPin } from "@/lib/auth";
+import { useAuthStore, resetarPin, definirAdmin } from "@/lib/auth";
 import { db } from "@/lib/db/dexie";
 
 const NOMES_FICHA: Record<string, string> = {
@@ -61,6 +62,16 @@ export default function AdminPage() {
     } finally {
       setResetandoId(null);
     }
+  }
+
+  async function handleAlternarAdmin(id: string, nome: string, atual: boolean) {
+    const confirmado = window.confirm(
+      atual
+        ? `Remover acesso de administrador de ${nome}?`
+        : `Tornar ${nome} administrador?`
+    );
+    if (!confirmado) return;
+    await definirAdmin(id, !atual);
   }
 
   const sessoesFiltradas =
@@ -118,17 +129,39 @@ export default function AdminPage() {
                     {new Date(t.criadoEm).toLocaleDateString("pt-BR")}
                   </div>
                 </div>
-                <button
-                  onClick={() => handleResetarPin(t.id, t.nome)}
-                  disabled={resetandoId === t.id}
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-                  style={{
-                    background: "var(--surface-raised)",
-                    color: "var(--text-dim)",
-                  }}
-                >
-                  <KeyRound size={12} /> Resetar PIN
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() =>
+                      handleAlternarAdmin(t.id, t.nome, !!t.isAdmin)
+                    }
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                    style={{
+                      background: "var(--surface-raised)",
+                      color: "var(--text-dim)",
+                    }}
+                  >
+                    {t.isAdmin ? (
+                      <>
+                        <ShieldMinus size={12} /> Remover admin
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck size={12} /> Tornar admin
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleResetarPin(t.id, t.nome)}
+                    disabled={resetandoId === t.id}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                    style={{
+                      background: "var(--surface-raised)",
+                      color: "var(--text-dim)",
+                    }}
+                  >
+                    <KeyRound size={12} /> Resetar PIN
+                  </button>
+                </div>
               </div>
             ))}
           </div>

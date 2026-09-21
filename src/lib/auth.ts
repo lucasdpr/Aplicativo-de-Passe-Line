@@ -90,6 +90,14 @@ export async function autenticarPorPin(
     .equals(matriculaPadronizada)
     .first();
   if (!tecnico || tecnico.pin !== pinHash) return null;
+
+  // Cadastros feitos antes da matrícula entrar na lista de admins (ou antes
+  // do recurso existir) são promovidos automaticamente no primeiro login.
+  if (MATRICULAS_ADMIN.includes(matriculaPadronizada) && !tecnico.isAdmin) {
+    await db.tecnicos.update(tecnico.id, { isAdmin: true });
+    tecnico.isAdmin = true;
+  }
+
   return semPinDe(tecnico);
 }
 
@@ -101,4 +109,8 @@ export async function listarTecnicos(): Promise<Omit<Tecnico, "pin">[]> {
 export async function resetarPin(tecnicoId: string, novoPin: string) {
   const pinHash = await hashPin(novoPin);
   await db.tecnicos.update(tecnicoId, { pin: pinHash });
+}
+
+export async function definirAdmin(tecnicoId: string, isAdmin: boolean) {
+  await db.tecnicos.update(tecnicoId, { isAdmin });
 }
