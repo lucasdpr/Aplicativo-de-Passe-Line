@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Factory, KeyRound, User as UserIcon } from "lucide-react";
+import { KeyRound, User as UserIcon } from "lucide-react";
 import {
   autenticarPorPin,
   cadastrarTecnico,
@@ -70,13 +71,16 @@ export default function LoginPage() {
       <div className="relative w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <div
-            className="flex h-14 w-14 items-center justify-center rounded-2xl"
-            style={{
-              background: "var(--primary-soft)",
-              border: "1px solid var(--border-strong)",
-            }}
+            className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl"
+            style={{ border: "1px solid var(--border-strong)" }}
           >
-            <Factory size={26} style={{ color: "var(--primary-strong)" }} />
+            <Image
+              src="/icons/logo-mark.png"
+              alt="Pass-Line"
+              width={64}
+              height={64}
+              priority
+            />
           </div>
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight">

@@ -114,3 +114,9 @@ export async function resetarPin(tecnicoId: string, novoPin: string) {
 export async function definirAdmin(tecnicoId: string, isAdmin: boolean) {
   await db.tecnicos.update(tecnicoId, { isAdmin });
 }
+
+export async function excluirTecnico(tecnicoId: string) {
+  // As medições já registradas por este técnico são mantidas no histórico
+  // (o vínculo é só o cadastro de acesso, não o registro de auditoria).
+  await db.tecnicos.delete(tecnicoId);
+}
