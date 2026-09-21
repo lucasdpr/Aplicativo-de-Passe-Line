@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import {
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
 import { db } from "@/lib/db/dexie";
+import { puxarAtualizacoes } from "@/lib/db/sync";
 import type { TipoFicha } from "@/types";
 
 const FICHA_INFO: Record<
@@ -35,6 +36,10 @@ export default function HistoricoPage() {
     []
   );
   const [gerandoId, setGerandoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    puxarAtualizacoes().catch(() => {});
+  }, []);
 
   async function gerarPdf(sessaoId: string) {
     setGerandoId(sessaoId);

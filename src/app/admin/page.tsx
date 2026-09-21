@@ -31,6 +31,7 @@ import {
   cancelarPush,
 } from "@/lib/push";
 import { db } from "@/lib/db/dexie";
+import { puxarAtualizacoes } from "@/lib/db/sync";
 import type { Edicao, TipoFicha } from "@/types";
 
 const NOMES_FICHA: Record<string, string> = {
@@ -65,6 +66,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (!suportaPush()) return;
     statusInscricaoPush().then(setStatusPush);
+  }, []);
+
+  useEffect(() => {
+    puxarAtualizacoes().catch(() => {});
   }, []);
 
   async function handleAtivarNotificacoes() {
