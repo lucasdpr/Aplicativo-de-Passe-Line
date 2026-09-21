@@ -39,8 +39,14 @@ function notificarConclusao(sessao: SessaoMedicao) {
 export async function sincronizarPendentes(): Promise<{
   enviados: number;
   falhas: number;
+  erros: string[];
 }> {
-  if (!supabase || !navigator.onLine) return { enviados: 0, falhas: 0 };
+  if (!supabase) {
+    return { enviados: 0, falhas: 0, erros: ["Supabase não configurado."] };
+  }
+  if (!navigator.onLine) {
+    return { enviados: 0, falhas: 0, erros: [] };
+  }
 
   const pendentes = await db.sessoes
     .where("status")
@@ -49,6 +55,7 @@ export async function sincronizarPendentes(): Promise<{
 
   let enviados = 0;
   let falhas = 0;
+  const erros: string[] = [];
 
   for (const sessao of pendentes) {
     try {
@@ -61,12 +68,14 @@ export async function sincronizarPendentes(): Promise<{
       if (primeiraVez) notificarConclusao(sessao);
       enviados++;
     } catch (err) {
+      const mensagem = err instanceof Error ? err.message : String(err);
       console.error("Falha ao sincronizar sessão", sessao.id, err);
+      erros.push(`${NOMES_FICHA[sessao.tipoFicha]} (${sessao.data}): ${mensagem}`);
       falhas++;
     }
   }
 
-  return { enviados, falhas };
+  return { enviados, falhas, erros };
 }
 
 async function enviarSessao(sessao: SessaoMedicao) {
@@ -182,4 +191,17 @@ export async function puxarAtualizacoes(): Promise<{ recebidos: number }> {
   }
 
   return { recebidos };
+}
+
+/** Exclui uma medição (local e, se já sincronizada, também no Supabase). */
+export async function excluirSessao(sessao: SessaoMedicao) {
+  const linhasTable = TABELA_LOCAL_POR_TIPO[sessao.tipoFicha];
+  await linhasTable.where("sessaoId").equals(sessao.id).delete();
+  await db.sessoes.delete(sessao.id);
+  await db.edicoes.where("sessaoId").equals(sessao.id).delete();
+
+  if (supabase && navigator.onLine) {
+    // As linhas remotas somem sozinhas (foreign key com "on delete cascade").
+    await supabase.from("sessoes_medicao").delete().eq("id", sessao.id);
+  }
 }

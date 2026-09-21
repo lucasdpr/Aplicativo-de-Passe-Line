@@ -13,11 +13,12 @@ import {
   Clock,
   FileDown,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
 import { db } from "@/lib/db/dexie";
-import { puxarAtualizacoes } from "@/lib/db/sync";
+import { puxarAtualizacoes, sincronizarPendentes } from "@/lib/db/sync";
 import type { TipoFicha } from "@/types";
 
 const FICHA_INFO: Record<
@@ -36,10 +37,28 @@ export default function HistoricoPage() {
     []
   );
   const [gerandoId, setGerandoId] = useState<string | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [ultimoErro, setUltimoErro] = useState<string[] | null>(null);
 
   useEffect(() => {
     puxarAtualizacoes().catch(() => {});
   }, []);
+
+  async function handleSincronizarAgora() {
+    setSincronizando(true);
+    setUltimoErro(null);
+    try {
+      if (!navigator.onLine) {
+        setUltimoErro(["Sem conexão com a internet agora."]);
+        return;
+      }
+      const resultado = await sincronizarPendentes();
+      if (resultado.erros.length > 0) setUltimoErro(resultado.erros);
+      await puxarAtualizacoes();
+    } finally {
+      setSincronizando(false);
+    }
+  }
 
   async function gerarPdf(sessaoId: string) {
     setGerandoId(sessaoId);
@@ -68,9 +87,35 @@ export default function HistoricoPage() {
         >
           <ArrowLeft size={14} /> Voltar
         </Link>
-        <h1 className="font-display mb-4 mt-3 text-xl font-bold tracking-tight">
-          Histórico de medições
-        </h1>
+        <div className="mb-4 mt-3 flex items-center justify-between gap-2">
+          <h1 className="font-display text-xl font-bold tracking-tight">
+            Histórico de medições
+          </h1>
+          <button
+            onClick={handleSincronizarAgora}
+            disabled={sincronizando}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+            style={{
+              background: "var(--surface-raised)",
+              color: "var(--text-dim)",
+            }}
+          >
+            <RefreshCw size={13} className={sincronizando ? "animate-spin" : ""} />
+            Sincronizar agora
+          </button>
+        </div>
+
+        {ultimoErro && (
+          <div
+            className="mb-4 rounded-xl p-3 text-xs"
+            style={{ background: "var(--danger-soft)", color: "#fca5a5" }}
+          >
+            <div className="mb-1 font-medium">Falha ao sincronizar:</div>
+            {ultimoErro.map((e, i) => (
+              <div key={i}>{e}</div>
+            ))}
+          </div>
+        )}
 
         {sessoes?.length === 0 && (
           <div className="surface p-8 text-center text-sm text-[var(--text-dim)]">

@@ -31,8 +31,8 @@ import {
   cancelarPush,
 } from "@/lib/push";
 import { db } from "@/lib/db/dexie";
-import { puxarAtualizacoes } from "@/lib/db/sync";
-import type { Edicao, TipoFicha } from "@/types";
+import { puxarAtualizacoes, excluirSessao } from "@/lib/db/sync";
+import type { Edicao, SessaoMedicao, TipoFicha } from "@/types";
 
 const NOMES_FICHA: Record<string, string> = {
   PASS_LINE_DESEMPENADEIRA: "Pass-Line (Desempenadeira)",
@@ -139,6 +139,14 @@ export default function AdminPage() {
     );
     if (!confirmado) return;
     await excluirTecnico(id);
+  }
+
+  async function handleExcluirSessao(sessao: SessaoMedicao) {
+    const confirmado = window.confirm(
+      `Excluir esta medição de ${NOMES_FICHA[sessao.tipoFicha]} (${sessao.tecnicoNome}, ${sessao.data})? Essa ação não pode ser desfeita e remove também do banco na nuvem.`
+    );
+    if (!confirmado) return;
+    await excluirSessao(sessao);
   }
 
   const sessoesFiltradas =
@@ -340,6 +348,16 @@ export default function AdminPage() {
                       >
                         <Pencil size={11} /> Editar
                       </Link>
+                      <button
+                        onClick={() => handleExcluirSessao(s)}
+                        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
+                        style={{
+                          background: "var(--danger-soft)",
+                          color: "#fca5a5",
+                        }}
+                      >
+                        <Trash2 size={11} /> Excluir
+                      </button>
                     </div>
                   </div>
                   <div className="text-[var(--text-dim)]">
