@@ -6,12 +6,14 @@ import { useAuthStore } from "@/lib/auth";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
+  const hidratado = useAuthStore((s) => s.hidratado);
   const router = useRouter();
 
   useEffect(() => {
-    if (!tecnico) router.replace("/login");
-  }, [tecnico, router]);
+    if (hidratado && !tecnico) router.replace("/login");
+  }, [hidratado, tecnico, router]);
 
+  if (!hidratado) return null;
   if (!tecnico) return null;
   return <>{children}</>;
 }

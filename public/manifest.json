@@ -4,8 +4,8 @@
   "description": "Medição e ajuste de pass-line, gap, empeno/desgaste e segmentos - MCC2 e MCC3",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b1220",
-  "theme_color": "#0b1220",
+  "background_color": "#0a0c0f",
+  "theme_color": "#0a0c0f",
   "orientation": "any",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },

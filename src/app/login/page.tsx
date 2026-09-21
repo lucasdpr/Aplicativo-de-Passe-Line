@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Factory, KeyRound, User as UserIcon } from "lucide-react";
 import {
   autenticarPorPin,
   cadastrarTecnico,
@@ -56,88 +57,148 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex-1 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
-        <h1 className="text-xl font-semibold text-center mb-1">
-          CSN Pass-Line
-        </h1>
-        <p className="text-sm text-slate-400 text-center mb-6">
-          Medição e ajuste — MCC2 / MCC3
-        </p>
+    <main className="relative flex flex-1 items-center justify-center overflow-hidden p-4">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(700px 400px at 50% 0%, rgba(45,212,191,0.10), transparent 60%)",
+        }}
+      />
 
-        <div className="flex mb-6 rounded-lg bg-slate-800 p-1 text-sm">
-          <button
-            className={`flex-1 rounded-md py-2 ${modo === "entrar" ? "bg-sky-500 text-slate-950 font-medium" : "text-slate-300"}`}
-            onClick={() => setModo("entrar")}
-            type="button"
+      <div className="relative w-full max-w-sm">
+        <div className="mb-8 flex flex-col items-center gap-3 text-center">
+          <div
+            className="flex h-14 w-14 items-center justify-center rounded-2xl"
+            style={{
+              background: "var(--primary-soft)",
+              border: "1px solid var(--border-strong)",
+            }}
           >
-            Entrar
-          </button>
-          <button
-            className={`flex-1 rounded-md py-2 ${modo === "cadastrar" ? "bg-sky-500 text-slate-950 font-medium" : "text-slate-300"}`}
-            onClick={() => setModo("cadastrar")}
-            type="button"
-          >
-            Cadastrar
-          </button>
+            <Factory size={26} style={{ color: "var(--primary-strong)" }} />
+          </div>
+          <div>
+            <h1 className="font-display text-2xl font-bold tracking-tight">
+              CSN Pass-Line
+            </h1>
+            <p className="mt-1 text-sm text-[var(--text-dim)]">
+              Medição e ajuste — MCC2 / MCC3
+            </p>
+          </div>
         </div>
 
-        <form
-          onSubmit={modo === "entrar" ? handleEntrar : handleCadastrar}
-          className="space-y-4"
-        >
-          {modo === "cadastrar" && (
-            <>
-              <Campo label="Nome completo">
-                <input
-                  required
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  className="input"
-                />
-              </Campo>
-              <Campo label="Função">
-                <input
-                  required
-                  value={funcao}
-                  onChange={(e) => setFuncao(e.target.value)}
-                  className="input"
-                />
-              </Campo>
-            </>
-          )}
-          <Campo label="Matrícula">
-            <input
-              required
-              inputMode="numeric"
-              value={matricula}
-              onChange={(e) => setMatricula(e.target.value)}
-              className="input"
-            />
-          </Campo>
-          <Campo label="PIN">
-            <input
-              required
-              type="password"
-              inputMode="numeric"
-              minLength={4}
-              maxLength={8}
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              className="input tracking-widest text-center"
-            />
-          </Campo>
-
-          {erro && <p className="text-sm text-red-400">{erro}</p>}
-
-          <button
-            type="submit"
-            disabled={carregando}
-            className="w-full rounded-lg bg-sky-500 py-3 font-medium text-slate-950 disabled:opacity-50"
+        <div className="surface p-6" style={{ boxShadow: "var(--shadow-md)" }}>
+          <div
+            className="mb-6 flex rounded-xl p-1 text-sm"
+            style={{ background: "var(--bg)" }}
           >
-            {modo === "entrar" ? "Entrar" : "Cadastrar e entrar"}
-          </button>
-        </form>
+            <button
+              className="flex-1 rounded-lg py-2 font-medium transition"
+              style={
+                modo === "entrar"
+                  ? { background: "var(--primary)", color: "#04201c" }
+                  : { color: "var(--text-dim)" }
+              }
+              onClick={() => setModo("entrar")}
+              type="button"
+            >
+              Entrar
+            </button>
+            <button
+              className="flex-1 rounded-lg py-2 font-medium transition"
+              style={
+                modo === "cadastrar"
+                  ? { background: "var(--primary)", color: "#04201c" }
+                  : { color: "var(--text-dim)" }
+              }
+              onClick={() => setModo("cadastrar")}
+              type="button"
+            >
+              Cadastrar
+            </button>
+          </div>
+
+          <form
+            onSubmit={modo === "entrar" ? handleEntrar : handleCadastrar}
+            className="space-y-4"
+          >
+            {modo === "cadastrar" && (
+              <>
+                <Campo label="Nome completo">
+                  <input
+                    required
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    className="input"
+                  />
+                </Campo>
+                <Campo label="Função">
+                  <input
+                    required
+                    value={funcao}
+                    onChange={(e) => setFuncao(e.target.value)}
+                    className="input"
+                  />
+                </Campo>
+              </>
+            )}
+            <Campo label="Matrícula">
+              <div className="relative">
+                <UserIcon
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)]"
+                />
+                <input
+                  required
+                  inputMode="numeric"
+                  value={matricula}
+                  onChange={(e) => setMatricula(e.target.value)}
+                  className="input pl-9"
+                />
+              </div>
+            </Campo>
+            <Campo label="PIN">
+              <div className="relative">
+                <KeyRound
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)]"
+                />
+                <input
+                  required
+                  type="password"
+                  inputMode="numeric"
+                  minLength={4}
+                  maxLength={8}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  className="input pl-9 text-center tracking-[0.4em]"
+                />
+              </div>
+            </Campo>
+
+            {erro && (
+              <p
+                className="rounded-lg px-3 py-2 text-sm"
+                style={{ background: "var(--danger-soft)", color: "#fca5a5" }}
+              >
+                {erro}
+              </p>
+            )}
+
+            <button type="submit" disabled={carregando} className="btn-primary">
+              {carregando
+                ? "Aguarde..."
+                : modo === "entrar"
+                  ? "Entrar"
+                  : "Cadastrar e entrar"}
+            </button>
+          </form>
+        </div>
+
+        <p className="mt-6 text-center text-xs text-[var(--text-faint)]">
+          Funciona offline · sincroniza automaticamente ao conectar
+        </p>
       </div>
     </main>
   );
@@ -152,7 +213,9 @@ function Campo({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm text-slate-400">{label}</span>
+      <span className="mb-1.5 block text-xs font-medium text-[var(--text-dim)]">
+        {label}
+      </span>
       {children}
     </label>
   );

@@ -66,8 +66,8 @@ function makePng(size, bg, fg) {
 }
 
 mkdirSync("public/icons", { recursive: true });
-const bg = [11, 18, 32]; // #0b1220
-const fg = [56, 189, 248]; // sky-400
+const bg = [10, 12, 15]; // #0a0c0f
+const fg = [45, 212, 191]; // teal-400 (brand primary)
 
 writeFileSync("public/icons/icon-192.png", makePng(192, bg, fg));
 writeFileSync("public/icons/icon-512.png", makePng(512, bg, fg));

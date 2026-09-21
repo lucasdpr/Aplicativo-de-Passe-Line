@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { v4 as uuid } from "uuid";
+import { ArrowLeft, GitCompareArrows } from "lucide-react";
+import Link from "next/link";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
 import {
@@ -105,42 +107,61 @@ export default function EmpenoDesgastePage() {
   return (
     <AuthGuard>
       <StatusBar />
-      <main className="flex-1 p-4 max-w-4xl mx-auto w-full space-y-4">
-        <h1 className="text-lg font-semibold">
-          Medição de Empeno e Desgaste (Desempenadeira)
-        </h1>
-        <p className="text-sm text-slate-400">
-          Empeno/Desgaste máximo: ±{TOLERANCIA.toFixed(2)}mm
-        </p>
+      <main className="mx-auto w-full max-w-4xl flex-1 space-y-4 p-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-[var(--text-dim)] hover:text-[var(--text)]"
+        >
+          <ArrowLeft size={14} /> Voltar
+        </Link>
+
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: "var(--primary-soft)" }}
+          >
+            <GitCompareArrows
+              size={18}
+              style={{ color: "var(--primary-strong)" }}
+            />
+          </div>
+          <div>
+            <h1 className="font-display text-lg font-bold tracking-tight">
+              Empeno e Desgaste (Desempenadeira)
+            </h1>
+            <p className="text-sm text-[var(--text-dim)]">
+              Empeno/Desgaste máximo: ±{TOLERANCIA.toFixed(2)}mm
+            </p>
+          </div>
+        </div>
 
         <SessaoHeader value={header} onChange={setHeader} />
 
-        <div className="overflow-x-auto rounded-xl border border-slate-800">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-900 sticky top-0">
+        <div className="surface scrollbar-thin max-h-[60vh] overflow-auto">
+          <table className="table-industrial min-w-full text-sm">
+            <thead>
               <tr>
-                <th className="p-2 text-left">Nº CAD</th>
+                <th className="text-left">Nº CAD</th>
                 {CAMPOS.map((c) => (
-                  <th key={c.key} className="p-2 text-left whitespace-nowrap">
-                    {c.label}
-                  </th>
+                  <th key={c.key}>{c.label}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {linhas.map((l) => (
-                <tr key={l.nCad} className="odd:bg-slate-950 even:bg-slate-900">
-                  <td className="p-2 font-medium">{l.nCad}</td>
+                <tr key={l.nCad}>
+                  <td className="n-cad-cell">{l.nCad}</td>
                   {CAMPOS.map((c) => {
                     const valor = l[c.key] as number | undefined;
                     const fora = foraDaTolerancia(valor);
                     return (
-                      <td key={c.key} className="p-1">
+                      <td key={c.key}>
                         <input
                           type="number"
                           step="0.01"
                           inputMode="decimal"
-                          className={`input w-24 ${fora ? "input-fora-tolerancia" : ""}`}
+                          placeholder="—"
+                          className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
                           value={valor ?? ""}
                           onChange={(e) =>
                             setValor(l.nCad, c.key, e.target.value)
@@ -155,11 +176,7 @@ export default function EmpenoDesgastePage() {
           </table>
         </div>
 
-        <button
-          onClick={salvar}
-          disabled={salvando}
-          className="w-full rounded-lg bg-sky-500 py-3 font-medium text-slate-950 disabled:opacity-50"
-        >
+        <button onClick={salvar} disabled={salvando} className="btn-primary">
           {salvando ? "Salvando..." : salvo ? "Salvo ✓" : "Salvar medição"}
         </button>
       </main>

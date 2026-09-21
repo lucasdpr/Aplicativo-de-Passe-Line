@@ -1,55 +1,96 @@
 "use client";
 
 import Link from "next/link";
+import {
+  ArrowRight,
+  History,
+  Ruler,
+  MoveHorizontal,
+  Layers,
+  GitCompareArrows,
+} from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
+import { useAuthStore } from "@/lib/auth";
 
 const FICHAS = [
   {
     href: "/formularios/pass-line-desempenadeira",
     titulo: "Pass-Line (Desempenadeira)",
-    sub: "MCC's #2 e #3 — tolerância ±0,50mm",
+    sub: "Rolo e régua — ±0,50mm",
+    icon: Ruler,
   },
   {
     href: "/formularios/gap",
     titulo: "Medição e Ajuste de GAP",
-    sub: "MCC's #2 e #3",
+    sub: "Acionado / centro / não acionado",
+    icon: MoveHorizontal,
   },
   {
     href: "/formularios/empeno-desgaste",
-    titulo: "Empeno e Desgaste (Desempenadeira)",
-    sub: "MCC's #2 e #3 — tolerância ±2,00mm",
+    titulo: "Empeno e Desgaste",
+    sub: "Superior / inferior / par — ±2,00mm",
+    icon: GitCompareArrows,
   },
   {
     href: "/formularios/pass-line-segmentos",
     titulo: "Pass-Line dos Segmentos",
-    sub: "MCC's #2 e #3 — tolerância ±1,00mm",
+    sub: "Segmentos 0–6 e D — ±1,00mm",
+    icon: Layers,
   },
 ];
 
 export default function Home() {
+  const tecnico = useAuthStore((s) => s.tecnicoLogado);
+
   return (
     <AuthGuard>
       <StatusBar />
-      <main className="flex-1 p-4 max-w-2xl mx-auto w-full">
-        <h1 className="text-lg font-semibold mb-4">Selecione a ficha</h1>
+      <main className="mx-auto w-full max-w-2xl flex-1 p-4">
+        <div className="mb-6 mt-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-faint)]">
+            Olá, {tecnico?.nome?.split(" ")[0] ?? "técnico"}
+          </p>
+          <h1 className="font-display text-xl font-bold tracking-tight">
+            Selecione a ficha de medição
+          </h1>
+        </div>
+
         <div className="grid gap-3">
-          {FICHAS.map((f) => (
-            <Link
-              key={f.href}
-              href={f.href}
-              className="block rounded-xl border border-slate-800 bg-slate-900 p-4 active:bg-slate-800"
-            >
-              <div className="font-medium">{f.titulo}</div>
-              <div className="text-sm text-slate-400">{f.sub}</div>
-            </Link>
-          ))}
+          {FICHAS.map((f) => {
+            const Icon = f.icon;
+            return (
+              <Link
+                key={f.href}
+                href={f.href}
+                className="group surface flex items-center gap-4 p-4 transition hover:border-[var(--primary-strong)]"
+              >
+                <div
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+                  style={{ background: "var(--primary-soft)" }}
+                >
+                  <Icon size={20} style={{ color: "var(--primary-strong)" }} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{f.titulo}</div>
+                  <div className="truncate text-sm text-[var(--text-dim)]">
+                    {f.sub}
+                  </div>
+                </div>
+                <ArrowRight
+                  size={18}
+                  className="shrink-0 text-[var(--text-faint)] transition group-hover:translate-x-0.5 group-hover:text-[var(--primary-strong)]"
+                />
+              </Link>
+            );
+          })}
         </div>
 
         <Link
           href="/historico"
-          className="mt-6 block rounded-xl border border-slate-700 bg-slate-950 p-4 text-center text-sky-400"
+          className="surface mt-4 flex items-center justify-center gap-2 p-4 text-sm font-medium text-[var(--primary-strong)] transition hover:border-[var(--primary-strong)]"
         >
+          <History size={16} />
           Ver histórico de medições
         </Link>
       </main>

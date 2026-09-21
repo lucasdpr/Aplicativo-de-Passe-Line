@@ -14,18 +14,30 @@ async function hashPin(pin: string): Promise<string> {
 
 interface AuthState {
   tecnicoLogado: Omit<Tecnico, "pin"> | null;
+  hidratado: boolean;
   login: (tecnico: Omit<Tecnico, "pin">) => void;
   logout: () => void;
 }
 
+let marcarHidratado: (() => void) | null = null;
+
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
-      tecnicoLogado: null,
-      login: (tecnico) => set({ tecnicoLogado: tecnico }),
-      logout: () => set({ tecnicoLogado: null }),
-    }),
-    { name: "passline-auth" }
+    (set) => {
+      marcarHidratado = () => set({ hidratado: true });
+      return {
+        tecnicoLogado: null,
+        hidratado: false,
+        login: (tecnico) => set({ tecnicoLogado: tecnico }),
+        logout: () => set({ tecnicoLogado: null }),
+      };
+    },
+    {
+      name: "passline-auth",
+      onRehydrateStorage: () => () => {
+        marcarHidratado?.();
+      },
+    }
   )
 );
 

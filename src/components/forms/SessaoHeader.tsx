@@ -35,9 +35,8 @@ export function SessaoHeader({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
-      <label className="col-span-1">
-        <span className="mb-1 block text-xs text-slate-400">Máquina</span>
+    <div className="surface grid grid-cols-2 gap-3 p-4">
+      <Campo label="Máquina">
         <select
           className="input"
           value={value.maquina}
@@ -46,10 +45,9 @@ export function SessaoHeader({
           <option value="MCC2">MCC2</option>
           <option value="MCC3">MCC3</option>
         </select>
-      </label>
+      </Campo>
 
-      <label className="col-span-1">
-        <span className="mb-1 block text-xs text-slate-400">Veio</span>
+      <Campo label="Veio">
         <select
           className="input"
           value={value.veio}
@@ -61,50 +59,63 @@ export function SessaoHeader({
             </option>
           ))}
         </select>
-      </label>
+      </Campo>
 
-      <label className="col-span-2">
-        <span className="mb-1 block text-xs text-slate-400">Data</span>
-        <input
-          type="date"
-          className="input"
-          value={value.data}
-          onChange={(e) => set("data", e.target.value)}
-        />
-      </label>
+      <div className="col-span-2">
+        <Campo label="Data">
+          <input
+            type="date"
+            className="input"
+            value={value.data}
+            onChange={(e) => set("data", e.target.value)}
+          />
+        </Campo>
+      </div>
 
-      <label className="col-span-2">
-        <span className="mb-1 block text-xs text-slate-400">Observação</span>
-        <textarea
-          className="input"
-          rows={2}
-          value={value.observacao}
-          onChange={(e) => set("observacao", e.target.value)}
-        />
-      </label>
+      <div className="col-span-2">
+        <Campo label="Observação">
+          <textarea
+            className="input"
+            rows={2}
+            value={value.observacao}
+            onChange={(e) => set("observacao", e.target.value)}
+          />
+        </Campo>
+      </div>
 
-      <label className="col-span-1">
-        <span className="mb-1 block text-xs text-slate-400">
-          Inspecionado por
-        </span>
+      <Campo label="Inspecionado por">
         <input
           className="input"
           value={value.inspecionadoPor}
           onChange={(e) => set("inspecionadoPor", e.target.value)}
         />
-      </label>
+      </Campo>
 
-      <label className="col-span-1">
-        <span className="mb-1 block text-xs text-slate-400">
-          Liberado por
-        </span>
+      <Campo label="Liberado por">
         <input
           className="input"
           value={value.liberadoPor}
           onChange={(e) => set("liberadoPor", e.target.value)}
         />
-      </label>
+      </Campo>
     </div>
+  );
+}
+
+function Campo({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-medium text-[var(--text-dim)]">
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }
 
