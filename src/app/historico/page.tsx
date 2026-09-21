@@ -14,12 +14,14 @@ import {
   FileDown,
   Loader2,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
 import { db } from "@/lib/db/dexie";
-import { puxarAtualizacoes, sincronizarPendentes } from "@/lib/db/sync";
-import type { TipoFicha } from "@/types";
+import { puxarAtualizacoes, sincronizarPendentes, excluirSessao } from "@/lib/db/sync";
+import { useAuthStore } from "@/lib/auth";
+import type { SessaoMedicao, TipoFicha } from "@/types";
 
 const FICHA_INFO: Record<
   TipoFicha,
@@ -32,6 +34,7 @@ const FICHA_INFO: Record<
 };
 
 export default function HistoricoPage() {
+  const tecnico = useAuthStore((s) => s.tecnicoLogado);
   const sessoes = useLiveQuery(
     () => db.sessoes.orderBy("criadoEm").reverse().toArray(),
     []
@@ -57,6 +60,19 @@ export default function HistoricoPage() {
       await puxarAtualizacoes();
     } finally {
       setSincronizando(false);
+    }
+  }
+
+  async function handleExcluirSessao(sessao: SessaoMedicao) {
+    const info = FICHA_INFO[sessao.tipoFicha];
+    const confirmado = window.confirm(
+      `Excluir esta medição de ${info.nome} (${sessao.tecnicoNome}, ${sessao.data})? Essa ação não pode ser desfeita e remove também do banco na nuvem.`
+    );
+    if (!confirmado) return;
+    try {
+      await excluirSessao(sessao);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -157,27 +173,41 @@ export default function HistoricoPage() {
                     {s.tecnicoNome} — matr. {s.tecnicoMatricula} (
                     {s.tecnicoFuncao})
                   </div>
-                  <button
-                    onClick={() => gerarPdf(s.id)}
-                    disabled={!sincronizado || gerandoId === s.id}
-                    title={
-                      sincronizado
-                        ? "Gerar PDF oficial"
-                        : "Disponível após sincronizar com o servidor"
-                    }
-                    className="mt-3 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
-                    style={{
-                      background: "var(--primary-soft)",
-                      color: "var(--primary-strong)",
-                    }}
-                  >
-                    {gerandoId === s.id ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <FileDown size={13} />
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => gerarPdf(s.id)}
+                      disabled={!sincronizado || gerandoId === s.id}
+                      title={
+                        sincronizado
+                          ? "Gerar PDF oficial"
+                          : "Disponível após sincronizar com o servidor"
+                      }
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
+                      style={{
+                        background: "var(--primary-soft)",
+                        color: "var(--primary-strong)",
+                      }}
+                    >
+                      {gerandoId === s.id ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <FileDown size={13} />
+                      )}
+                      Gerar PDF
+                    </button>
+                    {tecnico?.isAdmin && (
+                      <button
+                        onClick={() => handleExcluirSessao(s)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                        style={{
+                          background: "var(--danger-soft)",
+                          color: "#fca5a5",
+                        }}
+                      >
+                        <Trash2 size={13} /> Excluir
+                      </button>
                     )}
-                    Gerar PDF
-                  </button>
+                  </div>
                 </div>
               </div>
             );
