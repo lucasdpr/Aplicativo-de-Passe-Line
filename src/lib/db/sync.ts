@@ -141,60 +141,125 @@ function fromSnakeCase<T>(row: Record<string, unknown>): T {
   return out as T;
 }
 
+async function buscarLinhasRemotasEGravar(
+  tipoFicha: TipoFicha,
+  sessaoId: string
+) {
+  if (!supabase) return;
+  const linhasTable = TABELA_LOCAL_POR_TIPO[tipoFicha];
+  const { data: linhasRemotas } = await supabase
+    .from(TABELA_POR_TIPO[tipoFicha])
+    .select("*")
+    .eq("sessao_id", sessaoId);
+
+  if (!linhasRemotas) return;
+  await linhasTable.where("sessaoId").equals(sessaoId).delete();
+  const novasLinhas = linhasRemotas.map((linha) => {
+    const { sessao_id, id, ...resto } = linha;
+    void id;
+    return { ...fromSnakeCase<Record<string, unknown>>(resto), sessaoId: sessao_id };
+  });
+  await (linhasTable as unknown as { bulkAdd: (items: unknown[]) => Promise<unknown> }).bulkAdd(
+    novasLinhas
+  );
+}
+
 /**
  * Busca no Supabase as medições sincronizadas por qualquer dispositivo e
  * traz para o banco local, para que apareçam no histórico/admin mesmo
  * quando foram registradas em outro celular/tablet/PC.
+ *
+ * Só busca um índice leve (id + atualizado_em) primeiro, e só baixa a
+ * sessão completa (com as linhas) quando ela é nova ou mudou desde a
+ * última vez — em vez de rebaixar a tabela inteira a cada chamada.
+ * Também remove localmente as sessões que sumiram no servidor (excluídas
+ * a partir de outro aparelho).
  */
 export async function puxarAtualizacoes(): Promise<{ recebidos: number }> {
   if (!supabase || !navigator.onLine) return { recebidos: 0 };
 
-  const { data: sessoesRemotas, error } = await supabase
+  const { data: indice, error } = await supabase
     .from("sessoes_medicao")
-    .select("*");
-  if (error || !sessoesRemotas) return { recebidos: 0 };
+    .select("id, tipo_ficha, atualizado_em");
+  if (error || !indice) return { recebidos: 0 };
+
+  const idsRemotos = new Set(indice.map((r) => r.id as string));
+
+  const sincronizadasLocalmente = await db.sessoes
+    .where("status")
+    .equals("SINCRONIZADO")
+    .toArray();
+  for (const local of sincronizadasLocalmente) {
+    if (!idsRemotos.has(local.id)) {
+      const linhasTable = TABELA_LOCAL_POR_TIPO[local.tipoFicha];
+      await linhasTable.where("sessaoId").equals(local.id).delete();
+      await db.sessoes.delete(local.id);
+      await db.edicoes.where("sessaoId").equals(local.id).delete();
+    }
+  }
 
   let recebidos = 0;
 
-  for (const row of sessoesRemotas) {
-    const remota = fromSnakeCase<SessaoMedicao>(row);
-    const local = await db.sessoes.get(remota.id);
+  for (const item of indice) {
+    const id = item.id as string;
+    const tipoFicha = item.tipo_ficha as TipoFicha;
+    const atualizadoEm = item.atualizado_em as string;
 
+    const local = await db.sessoes.get(id);
     // Nunca sobrescreve uma edição feita neste dispositivo que ainda não subiu.
     if (local && local.status === "PENDENTE_SYNC") continue;
+    // Já temos essa versão (ou mais nova) localmente, não precisa rebaixar.
+    if (local?.sincronizadoEm && local.sincronizadoEm >= atualizadoEm) continue;
 
+    const { data: row } = await supabase
+      .from("sessoes_medicao")
+      .select("*")
+      .eq("id", id)
+      .single();
+    if (!row) continue;
+
+    const remota = fromSnakeCase<SessaoMedicao>(row);
     await db.sessoes.put({
       ...remota,
       status: "SINCRONIZADO",
-      sincronizadoEm: local?.sincronizadoEm ?? new Date().toISOString(),
+      sincronizadoEm: atualizadoEm,
     });
 
-    const linhasTable = TABELA_LOCAL_POR_TIPO[remota.tipoFicha];
-    const { data: linhasRemotas } = await supabase
-      .from(TABELA_POR_TIPO[remota.tipoFicha])
-      .select("*")
-      .eq("sessao_id", remota.id);
-
-    if (linhasRemotas) {
-      await linhasTable.where("sessaoId").equals(remota.id).delete();
-      const novasLinhas = linhasRemotas.map((linha) => {
-        const { sessao_id, id, ...resto } = linha;
-        void id;
-        return { ...fromSnakeCase<Record<string, unknown>>(resto), sessaoId: sessao_id };
-      });
-      await (linhasTable as unknown as { bulkAdd: (items: unknown[]) => Promise<unknown> }).bulkAdd(
-        novasLinhas
-      );
-    }
-
+    await buscarLinhasRemotasEGravar(tipoFicha, id);
     recebidos++;
   }
 
   return { recebidos };
 }
 
+/**
+ * Confere se alguém sincronizou uma versão mais nova desta medição depois
+ * que ela foi carregada para edição neste aparelho.
+ */
+export async function houveConflitoDeEdicao(
+  sessaoId: string,
+  atualizadoEmConhecido: string | undefined
+): Promise<boolean> {
+  if (!supabase || !navigator.onLine || !atualizadoEmConhecido) return false;
+  const { data } = await supabase
+    .from("sessoes_medicao")
+    .select("atualizado_em")
+    .eq("id", sessaoId)
+    .single();
+  if (!data) return false;
+  return (data.atualizado_em as string) > atualizadoEmConhecido;
+}
+
 /** Exclui uma medição (local e, se já sincronizada, também no Supabase). */
 export async function excluirSessao(sessao: SessaoMedicao) {
+  // Se ela já foi sincronizada, só dá para excluir com internet: senão o
+  // registro remoto continua existindo e volta sozinho na próxima sincronização.
+  if (sessao.status === "SINCRONIZADO" && (!supabase || !navigator.onLine)) {
+    throw new Error(
+      "Sem internet agora. Essa medição já está sincronizada — conecte antes de excluir, senão ela volta ao sincronizar depois."
+    );
+  }
+
   const linhasTable = TABELA_LOCAL_POR_TIPO[sessao.tipoFicha];
   await linhasTable.where("sessaoId").equals(sessao.id).delete();
   await db.sessoes.delete(sessao.id);

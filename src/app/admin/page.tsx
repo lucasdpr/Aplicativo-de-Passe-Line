@@ -146,7 +146,11 @@ export default function AdminPage() {
       `Excluir esta medição de ${NOMES_FICHA[sessao.tipoFicha]} (${sessao.tecnicoNome}, ${sessao.data})? Essa ação não pode ser desfeita e remove também do banco na nuvem.`
     );
     if (!confirmado) return;
-    await excluirSessao(sessao);
+    try {
+      await excluirSessao(sessao);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
   }
 
   const sessoesFiltradas =

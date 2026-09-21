@@ -13,7 +13,7 @@ import {
   type SessaoHeaderValue,
 } from "@/components/forms/SessaoHeader";
 import { db } from "@/lib/db/dexie";
-import { sincronizarPendentes } from "@/lib/db/sync";
+import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
 import { N_CAD_RANGE, type LinhaGap, type SessaoMedicao } from "@/types";
@@ -76,6 +76,9 @@ function GapForm() {
   const [carregando, setCarregando] = useState(!!sessaoId);
   const [headerOriginal, setHeaderOriginal] =
     useState<SessaoHeaderValue | null>(null);
+  const [sincronizadoEmOriginal, setSincronizadoEmOriginal] = useState<
+    string | undefined
+  >(undefined);
   const [linhasOriginais, setLinhasOriginais] = useState<LinhaGap[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
@@ -91,6 +94,7 @@ function GapForm() {
       if (sessao) {
         setHeader(headerDeSessao(sessao));
         setHeaderOriginal(headerDeSessao(sessao));
+        setSincronizadoEmOriginal(sessao.sincronizadoEm);
       }
       const base = linhasIniciais();
       const mesclado = base.map((l) => {
@@ -116,6 +120,15 @@ function GapForm() {
     setSalvando(true);
     try {
       if (sessaoId && headerOriginal) {
+        if (await houveConflitoDeEdicao(sessaoId, sincronizadoEmOriginal)) {
+          const continuar = window.confirm(
+            "Outra pessoa já sincronizou uma versão mais nova desta medição. Se continuar, sua edição vai sobrescrever a dela. Continuar mesmo assim?"
+          );
+          if (!continuar) {
+            setSalvando(false);
+            return;
+          }
+        }
         const mudancasHeader = diffObjetos("header", headerOriginal, header);
         const mudancasLinhas = diffLinhas(
           linhasOriginais,
