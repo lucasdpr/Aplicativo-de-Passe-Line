@@ -1,0 +1,15 @@
+{
+  "name": "CSN Pass-Line",
+  "short_name": "Pass-Line",
+  "description": "Medição e ajuste de pass-line, gap, empeno/desgaste e segmentos - MCC2 e MCC3",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "orientation": "any",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
