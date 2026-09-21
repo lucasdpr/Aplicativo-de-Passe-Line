@@ -16,6 +16,25 @@ const TABELA_LOCAL_POR_TIPO = {
   PASS_LINE_SEGMENTOS: db.leiturasSegmentos,
 } as const;
 
+const NOMES_FICHA: Record<TipoFicha, string> = {
+  PASS_LINE_DESEMPENADEIRA: "Pass-Line (Desempenadeira)",
+  GAP: "GAP",
+  EMPENO_DESGASTE: "Empeno e Desgaste",
+  PASS_LINE_SEGMENTOS: "Pass-Line dos Segmentos",
+};
+
+function notificarConclusao(sessao: SessaoMedicao) {
+  fetch("/api/notificar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      titulo: "Pass-Line concluído",
+      corpo: `${sessao.tecnicoNome} concluiu ${NOMES_FICHA[sessao.tipoFicha]} — ${sessao.maquina} veio ${sessao.veio}`,
+      urlDestino: "/historico",
+    }),
+  }).catch(() => {});
+}
+
 /** Tries to push every PENDENTE_SYNC session to Supabase. Safe to call repeatedly. */
 export async function sincronizarPendentes(): Promise<{
   enviados: number;
@@ -33,11 +52,13 @@ export async function sincronizarPendentes(): Promise<{
 
   for (const sessao of pendentes) {
     try {
+      const primeiraVez = !sessao.sincronizadoEm;
       await enviarSessao(sessao);
       await db.sessoes.update(sessao.id, {
         status: "SINCRONIZADO",
         sincronizadoEm: new Date().toISOString(),
       });
+      if (primeiraVez) notificarConclusao(sessao);
       enviados++;
     } catch (err) {
       console.error("Falha ao sincronizar sessão", sessao.id, err);
