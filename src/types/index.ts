@@ -36,6 +36,25 @@ export interface SessaoMedicao {
   criadoEm: string; // ISO datetime
   sincronizadoEm?: string; // ISO datetime, set once synced to Supabase
   status: "RASCUNHO" | "PENDENTE_SYNC" | "SINCRONIZADO";
+  editadoPorNome?: string;
+  editadoEm?: string;
+}
+
+export interface MudancaCampo {
+  linhaChave: string;
+  campo: string;
+  de: string;
+  para: string;
+}
+
+export interface Edicao {
+  id?: number;
+  sessaoId: string;
+  editadoPorId: string;
+  editadoPorNome: string;
+  editadoEm: string;
+  mudancasHeader: MudancaCampo[];
+  mudancasLinhas: MudancaCampo[];
 }
 
 // --- Form 1: Pass-Line (Desempenadeira) ---

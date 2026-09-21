@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Wifi, WifiOff, UploadCloud, LogOut } from "lucide-react";
 import { db } from "@/lib/db/dexie";
@@ -37,14 +38,13 @@ export function StatusBar() {
       }}
     >
       <div className="flex items-center gap-2.5">
-        <div
-          className="flex h-7 w-7 items-center justify-center rounded-md font-display text-xs font-bold"
-          style={{
-            background: "var(--primary-soft)",
-            color: "var(--primary-strong)",
-          }}
-        >
-          PL
+        <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-md">
+          <Image
+            src="/icons/logo-mark.png"
+            alt="Pass-Line"
+            width={28}
+            height={28}
+          />
         </div>
         <div className="flex items-center gap-1.5 text-xs text-[var(--text-dim)]">
           {online ? (

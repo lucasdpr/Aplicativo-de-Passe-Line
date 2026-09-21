@@ -10,17 +10,33 @@ import {
   KeyRound,
   Users,
   History,
+  Trash2,
+  Pencil,
+  ChevronDown,
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
-import { useAuthStore, resetarPin, definirAdmin } from "@/lib/auth";
+import {
+  useAuthStore,
+  resetarPin,
+  definirAdmin,
+  excluirTecnico,
+} from "@/lib/auth";
 import { db } from "@/lib/db/dexie";
+import type { Edicao, TipoFicha } from "@/types";
 
 const NOMES_FICHA: Record<string, string> = {
   PASS_LINE_DESEMPENADEIRA: "Pass-Line (Desempenadeira)",
   GAP: "GAP",
   EMPENO_DESGASTE: "Empeno e Desgaste",
   PASS_LINE_SEGMENTOS: "Pass-Line dos Segmentos",
+};
+
+const SLUG_POR_TIPO: Record<TipoFicha, string> = {
+  PASS_LINE_DESEMPENADEIRA: "pass-line-desempenadeira",
+  GAP: "gap",
+  EMPENO_DESGASTE: "empeno-desgaste",
+  PASS_LINE_SEGMENTOS: "pass-line-segmentos",
 };
 
 export default function AdminPage() {
@@ -30,8 +46,17 @@ export default function AdminPage() {
     () => db.sessoes.orderBy("criadoEm").reverse().toArray(),
     []
   );
+  const edicoes = useLiveQuery(() => db.edicoes.toArray(), []);
   const [filtroTecnico, setFiltroTecnico] = useState<string>("TODOS");
   const [resetandoId, setResetandoId] = useState<string | null>(null);
+  const [expandido, setExpandido] = useState<string | null>(null);
+
+  const edicoesPorSessao = new Map<string, Edicao[]>();
+  for (const e of edicoes ?? []) {
+    const lista = edicoesPorSessao.get(e.sessaoId) ?? [];
+    lista.push(e);
+    edicoesPorSessao.set(e.sessaoId, lista);
+  }
 
   if (tecnico && !tecnico.isAdmin) {
     return (
@@ -72,6 +97,14 @@ export default function AdminPage() {
     );
     if (!confirmado) return;
     await definirAdmin(id, !atual);
+  }
+
+  async function handleExcluirTecnico(id: string, nome: string) {
+    const confirmado = window.confirm(
+      `Excluir o cadastro de ${nome}? As medições que ele já registrou continuam no histórico — só o acesso de login é removido. Essa ação não pode ser desfeita.`
+    );
+    if (!confirmado) return;
+    await excluirTecnico(id);
   }
 
   const sessoesFiltradas =
@@ -161,6 +194,16 @@ export default function AdminPage() {
                   >
                     <KeyRound size={12} /> Resetar PIN
                   </button>
+                  <button
+                    onClick={() => handleExcluirTecnico(t.id, t.nome)}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                    style={{
+                      background: "var(--danger-soft)",
+                      color: "#fca5a5",
+                    }}
+                  >
+                    <Trash2 size={12} /> Excluir
+                  </button>
                 </div>
               </div>
             ))}
@@ -191,26 +234,102 @@ export default function AdminPage() {
                 Nenhuma medição encontrada.
               </div>
             )}
-            {sessoesFiltradas?.map((s) => (
-              <div key={s.id} className="surface p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">
-                    {NOMES_FICHA[s.tipoFicha]}
-                  </span>
-                  <span
-                    className={`badge ${s.status === "SINCRONIZADO" ? "badge-success" : "badge-warning"}`}
-                  >
-                    {s.status === "SINCRONIZADO" ? "Sincronizado" : "Pendente"}
-                  </span>
+            {sessoesFiltradas?.map((s) => {
+              const historicoEdicoes = edicoesPorSessao.get(s.id) ?? [];
+              const aberto = expandido === s.id;
+              return (
+                <div key={s.id} className="surface p-3 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">
+                      {NOMES_FICHA[s.tipoFicha]}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`badge ${s.status === "SINCRONIZADO" ? "badge-success" : "badge-warning"}`}
+                      >
+                        {s.status === "SINCRONIZADO"
+                          ? "Sincronizado"
+                          : "Pendente"}
+                      </span>
+                      <Link
+                        href={`/formularios/${SLUG_POR_TIPO[s.tipoFicha]}?sessaoId=${s.id}`}
+                        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
+                        style={{
+                          background: "var(--surface-raised)",
+                          color: "var(--text-dim)",
+                        }}
+                      >
+                        <Pencil size={11} /> Editar
+                      </Link>
+                    </div>
+                  </div>
+                  <div className="text-[var(--text-dim)]">
+                    {s.maquina} · Veio {s.veio} · {s.data}
+                  </div>
+                  <div className="text-xs text-[var(--text-faint)]">
+                    {s.tecnicoNome} — matr. {s.tecnicoMatricula}
+                  </div>
+                  {s.editadoPorNome && (
+                    <div className="mt-1 text-xs text-[var(--text-faint)]">
+                      Editado por {s.editadoPorNome} em{" "}
+                      {s.editadoEm &&
+                        new Date(s.editadoEm).toLocaleString("pt-BR")}
+                    </div>
+                  )}
+
+                  {historicoEdicoes.length > 0 && (
+                    <div className="mt-2 border-t pt-2" style={{ borderColor: "var(--border)" }}>
+                      <button
+                        onClick={() => setExpandido(aberto ? null : s.id)}
+                        className="flex items-center gap-1 text-xs text-[var(--primary-strong)]"
+                      >
+                        <ChevronDown
+                          size={12}
+                          className={aberto ? "rotate-180" : ""}
+                        />
+                        {historicoEdicoes.length} alteração
+                        {historicoEdicoes.length > 1 ? "ões" : ""}
+                      </button>
+                      {aberto && (
+                        <div className="mt-2 space-y-2">
+                          {historicoEdicoes.map((e, i) => (
+                            <div
+                              key={i}
+                              className="rounded-lg p-2 text-xs"
+                              style={{ background: "var(--surface-raised)" }}
+                            >
+                              <div className="mb-1 text-[var(--text-faint)]">
+                                {e.editadoPorNome} em{" "}
+                                {new Date(e.editadoEm).toLocaleString("pt-BR")}
+                              </div>
+                              {[...e.mudancasHeader, ...e.mudancasLinhas].map(
+                                (m, j) => (
+                                  <div key={j} className="text-[var(--text)]">
+                                    <span className="text-[var(--text-faint)]">
+                                      {m.linhaChave !== "header"
+                                        ? `[${m.linhaChave}] `
+                                        : ""}
+                                      {m.campo}:
+                                    </span>{" "}
+                                    <span className="text-[#fca5a5] line-through">
+                                      {m.de}
+                                    </span>{" "}
+                                    →{" "}
+                                    <span className="text-[var(--success)]">
+                                      {m.para}
+                                    </span>
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="text-[var(--text-dim)]">
-                  {s.maquina} · Veio {s.veio} · {s.data}
-                </div>
-                <div className="text-xs text-[var(--text-faint)]">
-                  {s.tecnicoNome} — matr. {s.tecnicoMatricula}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       </main>

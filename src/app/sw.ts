@@ -13,10 +13,19 @@ declare const self: ServiceWorkerGlobalScope;
 
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
-  skipWaiting: true,
+  skipWaiting: false,
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: defaultCache,
 });
 
 serwist.addEventListeners();
+
+// Permite que a página peça para o service worker novo assumir na hora,
+// disparado pelo botão "Atualizar" (em vez de skipWaiting automático,
+// que faria a atualização acontecer sem avisar o usuário).
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});

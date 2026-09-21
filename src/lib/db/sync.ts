@@ -68,6 +68,15 @@ async function enviarSessao(sessao: SessaoMedicao) {
   });
   if (sessaoError) throw sessaoError;
 
+  // Remove as linhas remotas antigas antes de reenviar: cobre tanto o
+  // primeiro envio (não-op) quanto o reenvio de uma sessão editada, que
+  // senão duplicaria as linhas no Supabase.
+  const { error: deleteError } = await supabase
+    .from(TABELA_POR_TIPO[sessao.tipoFicha])
+    .delete()
+    .eq("sessao_id", sessao.id);
+  if (deleteError) throw deleteError;
+
   const linhasTable = TABELA_LOCAL_POR_TIPO[sessao.tipoFicha];
   const linhas = await linhasTable.where("sessaoId").equals(sessao.id).toArray();
   if (linhas.length === 0) return;
