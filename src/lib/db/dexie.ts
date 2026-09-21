@@ -43,6 +43,14 @@ export class PassLineDB extends Dexie {
       linhasEmpenoDesgaste: "++id, sessaoId, nCad",
       leiturasSegmentos: "++id, sessaoId, segmento, lado",
     });
+    this.version(3).stores({
+      tecnicos: "id, matricula, isAdmin",
+      sessoes: "id, tipoFicha, maquina, veio, data, status, tecnicoId, criadoEm",
+      linhasPassLineDesempenadeira: "++id, sessaoId, nCad",
+      linhasGap: "++id, sessaoId, nCad",
+      linhasEmpenoDesgaste: "++id, sessaoId, nCad",
+      leiturasSegmentos: "++id, sessaoId, segmento, lado",
+    });
   }
 }
 
