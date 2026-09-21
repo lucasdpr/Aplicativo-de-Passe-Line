@@ -8,6 +8,7 @@ import {
   autenticarPorPin,
   cadastrarTecnico,
   useAuthStore,
+  MatriculaJaCadastradaError,
 } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -50,8 +51,12 @@ export default function LoginPage() {
       const tecnico = await cadastrarTecnico(nome, matricula, funcao, pin);
       login(tecnico);
       router.push("/");
-    } catch {
-      setErro("Não foi possível cadastrar. Matrícula já existe?");
+    } catch (err) {
+      setErro(
+        err instanceof MatriculaJaCadastradaError
+          ? err.message
+          : "Não foi possível cadastrar."
+      );
     } finally {
       setCarregando(false);
     }
