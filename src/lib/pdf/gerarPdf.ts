@@ -34,8 +34,8 @@ const PAGE_W = 841.89; // A4 landscape
 const PAGE_H = 595.28;
 const MARGIN = 32;
 
-const COR_PRIMARIA = rgb(0.02, 0.42, 0.38); // teal escuro (marca do app)
-const COR_PRIMARIA_CLARA = rgb(0.88, 0.95, 0.94);
+const COR_PRIMARIA = rgb(0.06, 0.25, 0.5); // azul escuro
+const COR_PRIMARIA_CLARA = rgb(0.88, 0.92, 0.97);
 const COR_TEXTO = rgb(0.09, 0.11, 0.13);
 const COR_TEXTO_SUAVE = rgb(0.42, 0.46, 0.5);
 const COR_LINHA = rgb(0.82, 0.84, 0.86);
