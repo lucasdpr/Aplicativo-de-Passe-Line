@@ -235,3 +235,17 @@ body {
   color: var(--text-dim);
   font-weight: 600;
 }
+
+/* Mantém a coluna Nº CAD visível ao rolar a tabela para o lado no celular */
+.table-industrial thead th:first-child,
+.table-industrial tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface-raised);
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.35);
+}
+
+.table-industrial tbody td:first-child {
+  background: var(--surface);
+}

@@ -85,17 +85,31 @@ export async function autenticarPorPin(
 ): Promise<Omit<Tecnico, "pin"> | null> {
   const matriculaPadronizada = matricula.trim().toUpperCase();
   const pinHash = await hashPin(pin);
-  const tecnico = await db.tecnicos
-    .where("matricula")
-    .equals(matriculaPadronizada)
-    .first();
+
+  // Busca sem diferenciar maiúsculas/minúsculas: cadastros feitos antes da
+  // padronização em maiúsculas ficaram salvos com a grafia original e não
+  // batem numa comparação exata.
+  const todos = await db.tecnicos.toArray();
+  const tecnico = todos.find(
+    (t) => t.matricula.trim().toUpperCase() === matriculaPadronizada
+  );
   if (!tecnico || tecnico.pin !== pinHash) return null;
 
+  const atualizacoes: Partial<Tecnico> = {};
+  if (tecnico.matricula !== matriculaPadronizada) {
+    atualizacoes.matricula = matriculaPadronizada;
+  }
+  if (tecnico.nome !== tecnico.nome.toUpperCase()) {
+    atualizacoes.nome = tecnico.nome.toUpperCase();
+  }
   // Cadastros feitos antes da matrícula entrar na lista de admins (ou antes
   // do recurso existir) são promovidos automaticamente no primeiro login.
   if (MATRICULAS_ADMIN.includes(matriculaPadronizada) && !tecnico.isAdmin) {
-    await db.tecnicos.update(tecnico.id, { isAdmin: true });
-    tecnico.isAdmin = true;
+    atualizacoes.isAdmin = true;
+  }
+  if (Object.keys(atualizacoes).length > 0) {
+    await db.tecnicos.update(tecnico.id, atualizacoes);
+    Object.assign(tecnico, atualizacoes);
   }
 
   return semPinDe(tecnico);
