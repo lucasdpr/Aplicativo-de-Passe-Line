@@ -146,7 +146,11 @@ export default function AdminPage() {
       `Excluir esta medição de ${NOMES_FICHA[sessao.tipoFicha]} (${sessao.tecnicoNome}, ${sessao.data})? Essa ação não pode ser desfeita e remove também do banco na nuvem.`
     );
     if (!confirmado) return;
-    await excluirSessao(sessao);
+    try {
+      await excluirSessao(sessao);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
   }
 
   const sessoesFiltradas =
@@ -233,13 +237,10 @@ export default function AdminPage() {
           </h2>
           <div className="space-y-2">
             {tecnicos?.map((t) => (
-              <div
-                key={t.id}
-                className="surface flex items-center justify-between gap-3 p-3"
-              >
+              <div key={t.id} className="surface flex flex-col gap-3 p-3">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate font-medium">{t.nome}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium break-words">{t.nome}</span>
                     {t.isAdmin && (
                       <span className="badge badge-success">admin</span>
                     )}
@@ -249,7 +250,7 @@ export default function AdminPage() {
                     {new Date(t.criadoEm).toLocaleDateString("pt-BR")}
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() =>
                       handleAlternarAdmin(t.id, t.nome, !!t.isAdmin)
@@ -326,11 +327,11 @@ export default function AdminPage() {
               const aberto = expandido === s.id;
               return (
                 <div key={s.id} className="surface p-3 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium break-words">
                       {NOMES_FICHA[s.tipoFicha]}
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={`badge ${s.status === "SINCRONIZADO" ? "badge-success" : "badge-warning"}`}
                       >

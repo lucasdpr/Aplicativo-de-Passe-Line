@@ -57,6 +57,13 @@ export const useAuthStore = create<AuthState>()(
   )
 );
 
+export class MatriculaJaCadastradaError extends Error {
+  constructor() {
+    super("Matrícula já cadastrada. Faça login ou peça para um admin resetar seu PIN.");
+    this.name = "MatriculaJaCadastradaError";
+  }
+}
+
 export async function cadastrarTecnico(
   nome: string,
   matricula: string,
@@ -65,6 +72,13 @@ export async function cadastrarTecnico(
 ) {
   const nomePadronizado = nome.trim().toUpperCase();
   const matriculaPadronizada = matricula.trim().toUpperCase();
+
+  const todos = await db.tecnicos.toArray();
+  const jaExiste = todos.some(
+    (t) => t.matricula.trim().toUpperCase() === matriculaPadronizada
+  );
+  if (jaExiste) throw new MatriculaJaCadastradaError();
+
   const pinHash = await hashPin(pin);
   const tecnico: Tecnico = {
     id: uuid(),
@@ -88,12 +102,15 @@ export async function autenticarPorPin(
 
   // Busca sem diferenciar maiúsculas/minúsculas: cadastros feitos antes da
   // padronização em maiúsculas ficaram salvos com a grafia original e não
-  // batem numa comparação exata.
+  // batem numa comparação exata. Também testa TODOS os registros dessa
+  // matrícula (não só o primeiro), pois versões antigas do app permitiam
+  // cadastrar a mesma matrícula mais de uma vez com PINs diferentes.
   const todos = await db.tecnicos.toArray();
-  const tecnico = todos.find(
+  const candidatos = todos.filter(
     (t) => t.matricula.trim().toUpperCase() === matriculaPadronizada
   );
-  if (!tecnico || tecnico.pin !== pinHash) return null;
+  const tecnico = candidatos.find((t) => t.pin === pinHash);
+  if (!tecnico) return null;
 
   const atualizacoes: Partial<Tecnico> = {};
   if (tecnico.matricula !== matriculaPadronizada) {
