@@ -2,7 +2,9 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
+import Link from "next/link";
 import {
+  ArrowLeft,
   Ruler,
   MoveHorizontal,
   GitCompareArrows,
@@ -55,7 +57,13 @@ export default function HistoricoPage() {
     <AuthGuard>
       <StatusBar />
       <main className="mx-auto w-full max-w-2xl flex-1 p-4">
-        <h1 className="font-display mb-4 mt-2 text-xl font-bold tracking-tight">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-[var(--text-dim)] hover:text-[var(--text)]"
+        >
+          <ArrowLeft size={14} /> Voltar
+        </Link>
+        <h1 className="font-display mb-4 mt-3 text-xl font-bold tracking-tight">
           Histórico de medições
         </h1>
 

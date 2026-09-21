@@ -85,17 +85,17 @@ export function SessaoHeader({
 
       <Campo label="Inspecionado por">
         <input
-          className="input"
+          className="input uppercase"
           value={value.inspecionadoPor}
-          onChange={(e) => set("inspecionadoPor", e.target.value)}
+          onChange={(e) => set("inspecionadoPor", e.target.value.toUpperCase())}
         />
       </Campo>
 
       <Campo label="Liberado por">
         <input
-          className="input"
+          className="input uppercase"
           value={value.liberadoPor}
-          onChange={(e) => set("liberadoPor", e.target.value)}
+          onChange={(e) => set("liberadoPor", e.target.value.toUpperCase())}
         />
       </Campo>
     </div>

@@ -8,6 +8,7 @@ import {
   MoveHorizontal,
   Layers,
   GitCompareArrows,
+  ShieldCheck,
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
@@ -93,6 +94,17 @@ export default function Home() {
           <History size={16} />
           Ver histórico de medições
         </Link>
+
+        {tecnico?.isAdmin && (
+          <Link
+            href="/admin"
+            className="surface mt-3 flex items-center justify-center gap-2 p-4 text-sm font-medium transition hover:border-[var(--border-strong)]"
+            style={{ color: "var(--text-dim)" }}
+          >
+            <ShieldCheck size={16} />
+            Painel do administrador
+          </Link>
+        )}
       </main>
     </AuthGuard>
   );

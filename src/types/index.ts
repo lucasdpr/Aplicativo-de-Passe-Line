@@ -16,6 +16,8 @@ export interface Tecnico {
   matricula: string;
   funcao: string;
   pin: string; // hashed locally, never sent as-is
+  isAdmin?: boolean;
+  criadoEm: string; // ISO datetime
 }
 
 export interface SessaoMedicao {

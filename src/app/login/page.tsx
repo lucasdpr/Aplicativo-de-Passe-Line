@@ -129,8 +129,8 @@ export default function LoginPage() {
                   <input
                     required
                     value={nome}
-                    onChange={(e) => setNome(e.target.value)}
-                    className="input"
+                    onChange={(e) => setNome(e.target.value.toUpperCase())}
+                    className="input uppercase"
                   />
                 </Campo>
                 <Campo label="Função">
@@ -151,10 +151,10 @@ export default function LoginPage() {
                 />
                 <input
                   required
-                  inputMode="numeric"
+                  inputMode="text"
                   value={matricula}
-                  onChange={(e) => setMatricula(e.target.value)}
-                  className="input pl-9"
+                  onChange={(e) => setMatricula(e.target.value.toUpperCase())}
+                  className="input pl-9 uppercase"
                 />
               </div>
             </Campo>
