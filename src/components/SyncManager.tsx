@@ -1,21 +1,26 @@
 "use client";
 
 import { useEffect } from "react";
-import { sincronizarPendentes } from "@/lib/db/sync";
+import { sincronizarPendentes, puxarAtualizacoes } from "@/lib/db/sync";
 
 const INTERVALO_TENTATIVA_MS = 60_000;
 
+async function sincronizarTudo() {
+  await sincronizarPendentes().catch(() => {});
+  await puxarAtualizacoes().catch(() => {});
+}
+
 export function SyncManager() {
   useEffect(() => {
-    sincronizarPendentes().catch(() => {});
+    sincronizarTudo();
 
     const aoConectar = () => {
-      sincronizarPendentes().catch(() => {});
+      sincronizarTudo();
     };
     window.addEventListener("online", aoConectar);
 
     const intervalo = window.setInterval(() => {
-      if (navigator.onLine) sincronizarPendentes().catch(() => {});
+      if (navigator.onLine) sincronizarTudo();
     }, INTERVALO_TENTATIVA_MS);
 
     return () => {
