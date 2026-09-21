@@ -85,6 +85,11 @@ body {
   box-shadow: 0 0 0 3px var(--primary-soft);
 }
 
+/* Precisa vencer o "padding" shorthand acima quando o input tem um ícone à esquerda */
+.input.pl-9 {
+  padding-left: 2.25rem;
+}
+
 .input-fora-tolerancia {
   border-color: var(--danger) !important;
   background: var(--danger-soft) !important;
