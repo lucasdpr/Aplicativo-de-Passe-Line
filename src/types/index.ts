@@ -111,4 +111,4 @@ export const TOLERANCIAS = {
 } as const;
 
 export const SEGMENTOS_PADRAO = ["0", "1", "2", "3", "4", "5", "6", "D"];
-export const N_CAD_RANGE = { min: 42, max: 79 };
+export const N_CAD_RANGE = { min: 43, max: 79 };
