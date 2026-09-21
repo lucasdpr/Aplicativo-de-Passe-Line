@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { RegistrarServiceWorker } from "@/components/RegistrarServiceWorker";
 import { InstalarApp } from "@/components/InstalarApp";
+import { SyncManager } from "@/components/SyncManager";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -55,6 +56,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <RegistrarServiceWorker />
+        <SyncManager />
         <InstalarApp />
         {children}
       </body>
