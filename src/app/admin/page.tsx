@@ -4,8 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
-  ArrowLeft,
-  ShieldCheck,
   KeyRound,
   Users,
   History,
@@ -15,10 +13,11 @@ import {
   Bell,
   BellOff,
   UserCheck,
-  Eye,
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
+import { SidebarAdmin, ICONE_PRAZOS, ICONE_TECNICOS, ICONE_HISTORICO } from "@/components/admin/SidebarAdmin";
+import { PainelPrazos } from "@/components/admin/PainelPrazos";
 import {
   useAuthStore,
   resetarPin,
@@ -191,35 +190,26 @@ export default function AdminPage() {
 
   return (
     <AuthGuard>
-      <StatusBar />
-      <main className="mx-auto w-full max-w-3xl flex-1 space-y-6 p-4">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-[var(--text-dim)] hover:text-[var(--text)]"
-        >
-          <ArrowLeft size={14} /> Voltar
-        </Link>
+      <div className="flex min-h-screen flex-col md:flex-row">
+        <SidebarAdmin
+          ehAdmin={ehAdmin}
+          nomeTecnico={tecnico?.nome ?? ""}
+          secoes={[
+            { id: "prazos", label: "Prazos de medição", icon: ICONE_PRAZOS },
+            {
+              id: "tecnicos",
+              label: "Técnicos",
+              icon: ICONE_TECNICOS,
+              contador: pendentes.length,
+            },
+            { id: "historico", label: "Histórico completo", icon: ICONE_HISTORICO },
+          ]}
+        />
 
-        <div className="flex items-center gap-3">
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "var(--primary-soft)" }}
-          >
-            {ehAdmin ? (
-              <ShieldCheck size={18} style={{ color: "var(--primary-strong)" }} />
-            ) : (
-              <Eye size={18} style={{ color: "var(--primary-strong)" }} />
-            )}
-          </div>
-          <div>
-            <h1 className="font-display text-lg font-bold tracking-tight">
-              {ehAdmin ? "Painel do administrador" : "Painel de visualização"}
-            </h1>
-            <p className="text-sm text-[var(--text-dim)]">
-              Técnicos cadastrados e histórico completo
-            </p>
-          </div>
-        </div>
+        <div className="min-w-0 flex-1">
+          <StatusBar />
+          <main className="mx-auto w-full max-w-4xl flex-1 space-y-8 p-4 md:p-6">
+        <PainelPrazos />
 
         {ehAdmin && (
           <div className="surface flex items-center gap-3 p-4">
@@ -312,7 +302,7 @@ export default function AdminPage() {
           </section>
         )}
 
-        <section>
+        <section id="tecnicos" className="scroll-mt-4">
           <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--text-dim)]">
             <Users size={15} /> Técnicos cadastrados ({aprovados.length})
           </h2>
@@ -378,7 +368,7 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section>
+        <section id="historico" className="scroll-mt-4">
           <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--text-dim)]">
             <History size={15} /> Histórico completo
           </h2>
@@ -514,7 +504,9 @@ export default function AdminPage() {
             })}
           </div>
         </section>
-      </main>
+          </main>
+        </div>
+      </div>
     </AuthGuard>
   );
 }
