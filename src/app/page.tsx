@@ -89,26 +89,60 @@ export default function Home() {
           })}
         </div>
 
-        <Link
-          href="/historico"
-          className="surface mt-4 flex items-center justify-center gap-2 p-4 text-sm font-medium text-[var(--primary-strong)] transition hover:border-[var(--primary-strong)]"
-        >
-          <History size={16} />
-          Ver histórico de medições
-        </Link>
-
-        {(tecnico?.papel === "ADMIN" || tecnico?.papel === "VISUALIZADOR") && (
+        <p className="mb-2 mt-7 text-xs font-medium uppercase tracking-wide text-[var(--text-faint)]">
+          Atalhos
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
           <Link
-            href="/admin"
-            className="surface mt-3 flex items-center justify-center gap-2 p-4 text-sm font-medium transition hover:border-[var(--border-strong)]"
-            style={{ color: "var(--text-dim)" }}
+            href="/historico"
+            className="group surface flex items-center gap-3 p-4 transition hover:border-[var(--primary-strong)]"
           >
-            <ShieldCheck size={16} />
-            {tecnico?.papel === "ADMIN"
-              ? "Painel do administrador"
-              : "Painel de visualização"}
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+              style={{ background: "var(--primary-soft)" }}
+            >
+              <History size={18} style={{ color: "var(--primary-strong)" }} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium">Histórico</div>
+              <div className="truncate text-xs text-[var(--text-dim)]">
+                Medições já registradas
+              </div>
+            </div>
+            <ArrowRight
+              size={16}
+              className="shrink-0 text-[var(--text-faint)] transition group-hover:translate-x-0.5 group-hover:text-[var(--primary-strong)]"
+            />
           </Link>
-        )}
+
+          {(tecnico?.papel === "ADMIN" || tecnico?.papel === "VISUALIZADOR") && (
+            <Link
+              href="/admin"
+              className="group surface flex items-center gap-3 p-4 transition hover:border-[var(--border-strong)]"
+            >
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)" }}
+              >
+                <ShieldCheck size={18} style={{ color: "var(--text-dim)" }} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">
+                  {tecnico?.papel === "ADMIN" ? "Painel admin" : "Visualização"}
+                </div>
+                <div className="truncate text-xs text-[var(--text-dim)]">
+                  {tecnico?.papel === "ADMIN"
+                    ? "Prazos, técnicos e mais"
+                    : "Acompanhar sem editar"}
+                </div>
+              </div>
+              <ArrowRight
+                size={16}
+                className="shrink-0 text-[var(--text-faint)] transition group-hover:translate-x-0.5"
+              />
+            </Link>
+          )}
+        </div>
       </main>
     </AuthGuard>
   );
