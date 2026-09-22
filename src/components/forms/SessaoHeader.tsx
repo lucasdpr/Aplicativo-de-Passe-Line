@@ -5,6 +5,7 @@ import type { Maquina, Veio } from "@/types";
 const VEIOS_POR_MAQUINA: Record<Maquina, Veio[]> = {
   MCC2: ["C", "D"],
   MCC3: ["E", "F"],
+  MCC4: ["G", "H"],
 };
 
 export interface SessaoHeaderValue {
@@ -44,6 +45,7 @@ export function SessaoHeader({
         >
           <option value="MCC2">MCC2</option>
           <option value="MCC3">MCC3</option>
+          <option value="MCC4">MCC4</option>
         </select>
       </Campo>
 
