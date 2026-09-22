@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/verificar-prazos",
+      "schedule": "0 12 * * *"
+    }
+  ]
+}

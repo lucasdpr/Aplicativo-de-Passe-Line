@@ -16,14 +16,7 @@ import { db } from "@/lib/db/dexie";
 import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
-import {
-  N_CAD_RANGE,
-  TOLERANCIAS,
-  type LinhaEmpenoDesgaste,
-  type SessaoMedicao,
-} from "@/types";
-
-const TOLERANCIA = TOLERANCIAS.EMPENO_DESGASTE;
+import { N_CAD_RANGE, type LinhaEmpenoDesgaste, type SessaoMedicao } from "@/types";
 
 function linhasIniciais(): LinhaEmpenoDesgaste[] {
   const linhas: LinhaEmpenoDesgaste[] = [];
@@ -33,19 +26,20 @@ function linhasIniciais(): LinhaEmpenoDesgaste[] {
   return linhas;
 }
 
-const CAMPOS: { key: keyof LinhaEmpenoDesgaste; label: string }[] = [
+const CAMPOS_EMPENO: { key: keyof LinhaEmpenoDesgaste; label: string }[] = [
   { key: "empenoSuperior", label: "Empeno Superior" },
   { key: "empenoInferior", label: "Empeno Inferior" },
   { key: "empenoPar", label: "Empeno Par" },
+];
+
+const CAMPOS_DESGASTE: { key: keyof LinhaEmpenoDesgaste; label: string }[] = [
   { key: "desgasteSuperior", label: "Desgaste Superior" },
   { key: "desgasteInferior", label: "Desgaste Inferior" },
   { key: "desgastePar", label: "Desgaste Par" },
 ];
 
-function foraDaTolerancia(valor: number | undefined) {
-  if (valor === undefined || Number.isNaN(valor)) return false;
-  return Math.abs(valor) > TOLERANCIA;
-}
+const CAMPOS = [...CAMPOS_EMPENO, ...CAMPOS_DESGASTE];
+const CAMPOS_TEXTO = new Set(CAMPOS_EMPENO.map((c) => c.key));
 
 function headerDeSessao(s: SessaoMedicao): SessaoHeaderValue {
   return {
@@ -108,7 +102,12 @@ function EmpenoDesgasteForm() {
     campo: keyof LinhaEmpenoDesgaste,
     valorTexto: string
   ) {
-    const valor = valorTexto === "" ? undefined : Number(valorTexto);
+    const valor: string | number | undefined =
+      valorTexto === ""
+        ? undefined
+        : CAMPOS_TEXTO.has(campo)
+          ? valorTexto
+          : Number(valorTexto);
     setLinhas((prev) =>
       prev.map((l) => (l.nCad === nCad ? { ...l, [campo]: valor } : l))
     );
@@ -228,7 +227,7 @@ function EmpenoDesgasteForm() {
             {sessaoId ? "Editar" : ""} Empeno e Desgaste (Desempenadeira)
           </h1>
           <p className="text-sm text-[var(--text-dim)]">
-            Empeno/Desgaste máximo: ±{TOLERANCIA.toFixed(2)}mm
+            Empeno: marcação (ex.: AC) · Desgaste: diâmetro medido do rolo (mm)
           </p>
         </div>
       </div>
@@ -250,16 +249,16 @@ function EmpenoDesgasteForm() {
               <tr key={l.nCad}>
                 <td className="n-cad-cell">{l.nCad}</td>
                 {CAMPOS.map((c) => {
-                  const valor = l[c.key] as number | undefined;
-                  const fora = foraDaTolerancia(valor);
+                  const ehTexto = CAMPOS_TEXTO.has(c.key);
+                  const valor = l[c.key] as string | number | undefined;
                   return (
                     <td key={c.key}>
                       <input
-                        type="number"
-                        step="0.01"
-                        inputMode="decimal"
+                        type={ehTexto ? "text" : "number"}
+                        step={ehTexto ? undefined : "0.01"}
+                        inputMode={ehTexto ? "text" : "decimal"}
                         placeholder="—"
-                        className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
+                        className="input-cell"
                         value={valor ?? ""}
                         onChange={(e) =>
                           setValor(l.nCad, c.key, e.target.value)

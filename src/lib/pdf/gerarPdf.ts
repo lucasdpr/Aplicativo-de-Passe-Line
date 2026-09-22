@@ -47,6 +47,10 @@ function fmt(v: number | null | undefined) {
   return v.toFixed(2).replace(".", ",");
 }
 
+function fmtTexto(v: string | null | undefined) {
+  return v ?? "";
+}
+
 interface Ctx {
   doc: PDFDocument;
   font: PDFFont;
@@ -396,8 +400,8 @@ export async function gerarPdfSessao(
           fmt(l.primeiraAcionado),
           fmt(l.primeiraCentro),
           fmt(l.primeiraNaoAcionado),
-          fmt(l.ajusteAcionado),
-          fmt(l.ajusteNaoAcionado),
+          fmtTexto(l.ajusteAcionado),
+          fmtTexto(l.ajusteNaoAcionado),
           fmt(l.segundaAcionado),
           fmt(l.segundaCentro),
           fmt(l.segundaNaoAcionado),
@@ -420,9 +424,9 @@ export async function gerarPdfSessao(
         ],
         dados.map((l) => [
           String(l.nCad),
-          fmt(l.empenoSuperior),
-          fmt(l.empenoInferior),
-          fmt(l.empenoPar),
+          fmtTexto(l.empenoSuperior),
+          fmtTexto(l.empenoInferior),
+          fmtTexto(l.empenoPar),
           fmt(l.desgasteSuperior),
           fmt(l.desgasteInferior),
           fmt(l.desgastePar),

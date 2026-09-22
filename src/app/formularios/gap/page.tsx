@@ -44,6 +44,10 @@ const CAMPOS_MEDIDA: { key: keyof LinhaGap; label: string }[] = [
   { key: "segundaNaoAcionado", label: "2ª Não Acionado" },
 ];
 
+// "Ajuste" na ficha de papel é "OK" (sem ajuste) ou uma marcação de nota —
+// não é um valor em mm, por isso é texto livre, não número.
+const CAMPOS_TEXTO = new Set<keyof LinhaGap>(["ajusteAcionado", "ajusteNaoAcionado"]);
+
 function foraDaTolerancia(
   campo: string,
   valor: number | undefined,
@@ -51,7 +55,7 @@ function foraDaTolerancia(
   tolerancia: number
 ) {
   if (valor === undefined || Number.isNaN(valor)) return false;
-  if (campo.toLowerCase().includes("ajuste")) return false; // ajuste é delta, não medida absoluta
+  if (campo.toLowerCase().includes("ajuste")) return false; // ajuste é texto, não medida
   return Math.abs(valor - gapNominal) > tolerancia;
 }
 
@@ -108,7 +112,12 @@ function GapForm() {
   }, [sessaoId]);
 
   function setValor(nCad: number, campo: keyof LinhaGap, valorTexto: string) {
-    const valor = valorTexto === "" ? undefined : Number(valorTexto);
+    const valor: string | number | undefined =
+      valorTexto === ""
+        ? undefined
+        : CAMPOS_TEXTO.has(campo)
+          ? valorTexto
+          : Number(valorTexto);
     setLinhas((prev) =>
       prev.map((l) => (l.nCad === nCad ? { ...l, [campo]: valor } : l))
     );
@@ -273,20 +282,23 @@ function GapForm() {
                   />
                 </td>
                 {CAMPOS_MEDIDA.map((c) => {
-                  const valor = l[c.key] as number | undefined;
-                  const fora = foraDaTolerancia(
-                    c.key,
-                    valor,
-                    l.gapNominal,
-                    l.toleranciaMm
-                  );
+                  const ehTexto = CAMPOS_TEXTO.has(c.key);
+                  const valor = l[c.key] as string | number | undefined;
+                  const fora = ehTexto
+                    ? false
+                    : foraDaTolerancia(
+                        c.key,
+                        valor as number | undefined,
+                        l.gapNominal,
+                        l.toleranciaMm
+                      );
                   return (
                     <td key={c.key}>
                       <input
-                        type="number"
-                        step="0.1"
-                        inputMode="decimal"
-                        placeholder="—"
+                        type={ehTexto ? "text" : "number"}
+                        step={ehTexto ? undefined : "0.1"}
+                        inputMode={ehTexto ? "text" : "decimal"}
+                        placeholder={ehTexto ? "OK" : "—"}
                         className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
                         value={valor ?? ""}
                         onChange={(e) =>

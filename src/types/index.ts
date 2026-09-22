@@ -1,8 +1,8 @@
 // Domain types for the CSN Pass-Line inspection app.
 // Four physical paper forms, all sharing the same session metadata.
 
-export type Maquina = "MCC2" | "MCC3";
-export type Veio = "C" | "D" | "E" | "F"; // MCC2 -> C/D, MCC3 -> E/F
+export type Maquina = "MCC2" | "MCC3" | "MCC4";
+export type Veio = "C" | "D" | "E" | "F" | "G" | "H"; // MCC2 -> C/D, MCC3 -> E/F, MCC4 -> G/H
 
 export type TipoFicha =
   | "PASS_LINE_DESEMPENADEIRA"
@@ -79,8 +79,10 @@ export interface LinhaGap {
   primeiraAcionado?: number;
   primeiraCentro?: number;
   primeiraNaoAcionado?: number;
-  ajusteAcionado?: number;
-  ajusteNaoAcionado?: number;
+  // Na ficha de papel esse campo é "OK" (sem ajuste) ou um marcador de nota
+  // quando ajustou — não é um valor em mm.
+  ajusteAcionado?: string;
+  ajusteNaoAcionado?: string;
   segundaAcionado?: number;
   segundaCentro?: number;
   segundaNaoAcionado?: number;
@@ -89,9 +91,11 @@ export interface LinhaGap {
 // --- Form 3: Empeno e Desgaste ---
 export interface LinhaEmpenoDesgaste {
   nCad: number;
-  empenoSuperior?: number;
-  empenoInferior?: number;
-  empenoPar?: number;
+  // Na ficha de papel o empeno é uma marcação de texto (ex.: "AC"), não um
+  // número. O desgaste é o diâmetro bruto medido do rolo em mm (ex.: 399.22).
+  empenoSuperior?: string;
+  empenoInferior?: string;
+  empenoPar?: string;
   desgasteSuperior?: number;
   desgasteInferior?: number;
   desgastePar?: number;
@@ -109,7 +113,6 @@ export interface LeituraSegmento {
 
 export const TOLERANCIAS = {
   PASS_LINE_DESEMPENADEIRA: 0.5,
-  EMPENO_DESGASTE: 2.0,
   PASS_LINE_SEGMENTOS: 1.0,
 } as const;
 
