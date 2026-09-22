@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { titulo, corpo, urlDestino } = await req.json();
+  const { titulo, corpo, urlDestino, tecnicoId } = await req.json();
   if (!titulo || !corpo) {
     return NextResponse.json(
       { error: "titulo e corpo são obrigatórios" },
@@ -39,9 +39,9 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createClient(url, key);
-  const { data: inscricoes, error } = await supabase
-    .from("push_subscriptions")
-    .select("*");
+  let query = supabase.from("push_subscriptions").select("*");
+  if (tecnicoId) query = query.eq("tecnico_id", tecnicoId);
+  const { data: inscricoes, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

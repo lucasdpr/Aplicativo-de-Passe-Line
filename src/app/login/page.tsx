@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { KeyRound, User as UserIcon, HardHat, Eye, ArrowLeft } from "lucide-react";
+import { KeyRound, User as UserIcon, HardHat, Eye, ArrowLeft, Bell, BellRing } from "lucide-react";
 import {
   autenticarPorPin,
   cadastrarTecnico,
@@ -12,6 +12,7 @@ import {
   CadastroPendenteError,
   SemConexaoError,
 } from "@/lib/auth";
+import { suportaPush, inscreverPush } from "@/lib/push";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,6 +26,14 @@ export default function LoginPage() {
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const [carregando, setCarregando] = useState(false);
+  const [tecnicoPendente, setTecnicoPendente] = useState<{ id: string; nome: string } | null>(null);
+  const [notificacaoAtivada, setNotificacaoAtivada] = useState(false);
+
+  async function handleAtivarNotificacaoPendente() {
+    if (!tecnicoPendente) return;
+    const resultado = await inscreverPush(tecnicoPendente.id, tecnicoPendente.nome);
+    if (resultado === "ativo") setNotificacaoAtivada(true);
+  }
 
   async function handleEntrar(e: React.FormEvent) {
     e.preventDefault();
@@ -63,6 +72,7 @@ export default function LoginPage() {
       const tecnico = await cadastrarTecnico(nome, matricula, funcao, pin);
       if (!tecnico.aprovado) {
         setModo("entrar");
+        setTecnicoPendente({ id: tecnico.id, nome: tecnico.nome });
         setAviso(
           "Cadastro enviado! Peça pro admin da sua área aprovar seu acesso antes de você poder entrar."
         );
@@ -83,7 +93,7 @@ export default function LoginPage() {
 
   function escolherTipoAcesso(tipo: "tecnico" | "visitante") {
     setTipoAcesso(tipo);
-    setFuncao(tipo === "visitante" ? "Visitante (Engenheiro/Gerente)" : "");
+    setFuncao(tipo === "visitante" ? "Visitante" : "");
   }
 
   return (
@@ -196,7 +206,7 @@ export default function LoginPage() {
                 <div className="min-w-0">
                   <div className="font-medium">Visitante</div>
                   <div className="text-xs text-[var(--text-dim)]">
-                    Engenheiro, gerente — só acompanha
+                    Só acompanha, não faz medições
                   </div>
                 </div>
               </button>
@@ -282,12 +292,31 @@ export default function LoginPage() {
               </p>
             )}
             {aviso && (
-              <p
-                className="rounded-lg px-3 py-2 text-sm"
+              <div
+                className="space-y-2 rounded-lg px-3 py-2 text-sm"
                 style={{ background: "var(--warning-soft)", color: "var(--warning)" }}
               >
-                {aviso}
-              </p>
+                <p>{aviso}</p>
+                {tecnicoPendente && suportaPush() && (
+                  <button
+                    type="button"
+                    onClick={handleAtivarNotificacaoPendente}
+                    disabled={notificacaoAtivada}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                    style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
+                  >
+                    {notificacaoAtivada ? (
+                      <>
+                        <BellRing size={13} /> Vamos te avisar quando aprovar
+                      </>
+                    ) : (
+                      <>
+                        <Bell size={13} /> Avisar no celular quando for aprovado
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             )}
 
             <button type="submit" disabled={carregando} className="btn-primary">

@@ -150,6 +150,16 @@ export default function AdminPage() {
     if (!confirmado) return;
     await aprovarTecnico(id);
     recarregarTecnicos();
+    fetch("/api/notificar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        titulo: "Acesso liberado!",
+        corpo: "Seu cadastro no CSN Pass-Line foi aprovado. Já pode entrar.",
+        urlDestino: "/login",
+        tecnicoId: id,
+      }),
+    }).catch(() => {});
   }
 
   async function handleDefinirPapel(id: string, nome: string, papel: PapelTecnico) {
