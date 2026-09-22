@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
+import { LembretePrazos } from "@/components/LembretePrazos";
 import { useAuthStore } from "@/lib/auth";
 
 const FICHAS = [
@@ -47,6 +48,7 @@ export default function Home() {
   return (
     <AuthGuard>
       <StatusBar />
+      <LembretePrazos />
       <main className="mx-auto w-full max-w-2xl flex-1 p-4">
         <div className="mb-6 mt-2">
           <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-faint)]">
