@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   ArrowLeft,
   ShieldCheck,
-  ShieldMinus,
   KeyRound,
   Users,
   History,
@@ -15,14 +14,18 @@ import {
   ChevronDown,
   Bell,
   BellOff,
+  UserCheck,
+  Eye,
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
 import {
   useAuthStore,
   resetarPin,
-  definirAdmin,
+  definirPapel,
   excluirTecnico,
+  listarTecnicos,
+  aprovarTecnico,
 } from "@/lib/auth";
 import {
   suportaPush,
@@ -32,7 +35,7 @@ import {
 } from "@/lib/push";
 import { db } from "@/lib/db/dexie";
 import { puxarAtualizacoes, excluirSessao } from "@/lib/db/sync";
-import type { Edicao, SessaoMedicao, TipoFicha } from "@/types";
+import type { Edicao, PapelTecnico, SessaoMedicao, Tecnico, TipoFicha } from "@/types";
 
 const NOMES_FICHA: Record<string, string> = {
   PASS_LINE_DESEMPENADEIRA: "Pass-Line (Desempenadeira)",
@@ -48,9 +51,18 @@ const SLUG_POR_TIPO: Record<TipoFicha, string> = {
   PASS_LINE_SEGMENTOS: "pass-line-segmentos",
 };
 
+const NOME_PAPEL: Record<PapelTecnico, string> = {
+  TECNICO: "Técnico",
+  VISUALIZADOR: "Visualizador",
+  ADMIN: "Admin",
+};
+
 export default function AdminPage() {
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
-  const tecnicos = useLiveQuery(() => db.tecnicos.toArray(), []);
+  const ehAdmin = tecnico?.papel === "ADMIN";
+  const podeVer = tecnico?.papel === "ADMIN" || tecnico?.papel === "VISUALIZADOR";
+
+  const [tecnicos, setTecnicos] = useState<Omit<Tecnico, "pin">[] | null>(null);
   const sessoes = useLiveQuery(
     () => db.sessoes.orderBy("criadoEm").reverse().toArray(),
     []
@@ -62,6 +74,15 @@ export default function AdminPage() {
   const [statusPush, setStatusPush] = useState<
     "inativo" | "ativo" | "negado" | "carregando"
   >(() => (suportaPush() ? "carregando" : "inativo"));
+
+  const recarregarTecnicos = useCallback(() => {
+    listarTecnicos().then(setTecnicos);
+  }, []);
+
+  useEffect(() => {
+    if (!podeVer) return;
+    recarregarTecnicos();
+  }, [podeVer, recarregarTecnicos]);
 
   useEffect(() => {
     if (!suportaPush()) return;
@@ -92,13 +113,13 @@ export default function AdminPage() {
     edicoesPorSessao.set(e.sessaoId, lista);
   }
 
-  if (tecnico && !tecnico.isAdmin) {
+  if (tecnico && !podeVer) {
     return (
       <AuthGuard>
         <StatusBar />
         <main className="mx-auto w-full max-w-2xl flex-1 p-4">
           <div className="surface p-8 text-center text-sm text-[var(--text-dim)]">
-            Esta área é restrita a administradores.
+            Esta área é restrita a administradores e visualizadores.
           </div>
         </main>
       </AuthGuard>
@@ -123,14 +144,20 @@ export default function AdminPage() {
     }
   }
 
-  async function handleAlternarAdmin(id: string, nome: string, atual: boolean) {
+  async function handleAprovarTecnico(id: string, nome: string) {
     const confirmado = window.confirm(
-      atual
-        ? `Remover acesso de administrador de ${nome}?`
-        : `Tornar ${nome} administrador?`
+      `Confirmar que ${nome} é realmente um técnico da equipe e liberar o acesso dele?`
     );
     if (!confirmado) return;
-    await definirAdmin(id, !atual);
+    await aprovarTecnico(id);
+    recarregarTecnicos();
+  }
+
+  async function handleDefinirPapel(id: string, nome: string, papel: PapelTecnico) {
+    const confirmado = window.confirm(`Definir ${nome} como "${NOME_PAPEL[papel]}"?`);
+    if (!confirmado) return;
+    await definirPapel(id, papel);
+    recarregarTecnicos();
   }
 
   async function handleExcluirTecnico(id: string, nome: string) {
@@ -139,6 +166,7 @@ export default function AdminPage() {
     );
     if (!confirmado) return;
     await excluirTecnico(id);
+    recarregarTecnicos();
   }
 
   async function handleExcluirSessao(sessao: SessaoMedicao) {
@@ -158,6 +186,9 @@ export default function AdminPage() {
       ? sessoes
       : sessoes?.filter((s) => s.tecnicoId === filtroTecnico);
 
+  const pendentes = tecnicos?.filter((t) => !t.aprovado) ?? [];
+  const aprovados = tecnicos?.filter((t) => t.aprovado) ?? [];
+
   return (
     <AuthGuard>
       <StatusBar />
@@ -174,11 +205,15 @@ export default function AdminPage() {
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
             style={{ background: "var(--primary-soft)" }}
           >
-            <ShieldCheck size={18} style={{ color: "var(--primary-strong)" }} />
+            {ehAdmin ? (
+              <ShieldCheck size={18} style={{ color: "var(--primary-strong)" }} />
+            ) : (
+              <Eye size={18} style={{ color: "var(--primary-strong)" }} />
+            )}
           </div>
           <div>
             <h1 className="font-display text-lg font-bold tracking-tight">
-              Painel do administrador
+              {ehAdmin ? "Painel do administrador" : "Painel de visualização"}
             </h1>
             <p className="text-sm text-[var(--text-dim)]">
               Técnicos cadastrados e histórico completo
@@ -186,113 +221,158 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="surface flex items-center gap-3 p-4">
-          <div
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-            style={{ background: "var(--primary-soft)" }}
-          >
-            {statusPush === "ativo" ? (
-              <Bell size={16} style={{ color: "var(--primary-strong)" }} />
-            ) : (
-              <BellOff size={16} style={{ color: "var(--text-faint)" }} />
+        {ehAdmin && (
+          <div className="surface flex items-center gap-3 p-4">
+            <div
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "var(--primary-soft)" }}
+            >
+              {statusPush === "ativo" ? (
+                <Bell size={16} style={{ color: "var(--primary-strong)" }} />
+              ) : (
+                <BellOff size={16} style={{ color: "var(--text-faint)" }} />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-medium">Notificações neste celular</div>
+              <div className="text-xs text-[var(--text-dim)]">
+                {statusPush === "ativo" &&
+                  "Ativas — você recebe um aviso quando um técnico concluir uma medição"}
+                {statusPush === "inativo" &&
+                  "Desativadas — ative para ser avisado quando alguém concluir uma medição"}
+                {statusPush === "negado" &&
+                  "Bloqueadas no navegador — permita notificações nas configurações do site"}
+                {statusPush === "carregando" && "Verificando..."}
+              </div>
+            </div>
+            {statusPush === "inativo" && (
+              <button
+                onClick={handleAtivarNotificacoes}
+                className="btn-primary !w-auto shrink-0 px-4"
+              >
+                Ativar
+              </button>
+            )}
+            {statusPush === "ativo" && (
+              <button
+                onClick={handleDesativarNotificacoes}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                style={{
+                  background: "var(--surface-raised)",
+                  color: "var(--text-dim)",
+                }}
+              >
+                Desativar
+              </button>
             )}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="font-medium">Notificações neste celular</div>
-            <div className="text-xs text-[var(--text-dim)]">
-              {statusPush === "ativo" &&
-                "Ativas — você recebe um aviso quando um técnico concluir uma medição"}
-              {statusPush === "inativo" &&
-                "Desativadas — ative para ser avisado quando alguém concluir uma medição"}
-              {statusPush === "negado" &&
-                "Bloqueadas no navegador — permita notificações nas configurações do site"}
-              {statusPush === "carregando" && "Verificando..."}
+        )}
+
+        {ehAdmin && pendentes.length > 0 && (
+          <section>
+            <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--text-dim)]">
+              <UserCheck size={15} /> Cadastros pendentes de aprovação (
+              {pendentes.length})
+            </h2>
+            <div className="space-y-2">
+              {pendentes.map((t) => (
+                <div
+                  key={t.id}
+                  className="surface flex flex-col gap-3 p-3"
+                  style={{ border: "1px solid var(--warning)" }}
+                >
+                  <div className="min-w-0">
+                    <span className="font-medium break-words">{t.nome}</span>
+                    <div className="text-xs text-[var(--text-faint)]">
+                      Matr. {t.matricula} · {t.funcao} · cadastrado em{" "}
+                      {new Date(t.criadoEm).toLocaleDateString("pt-BR")}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => handleAprovarTecnico(t.id, t.nome)}
+                      className="btn-primary !w-auto px-4"
+                    >
+                      <UserCheck size={12} /> Confirmar que é técnico e liberar acesso
+                    </button>
+                    <button
+                      onClick={() => handleExcluirTecnico(t.id, t.nome)}
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                      style={{
+                        background: "var(--danger-soft)",
+                        color: "#fca5a5",
+                      }}
+                    >
+                      <Trash2 size={12} /> Recusar
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-          {statusPush === "inativo" && (
-            <button
-              onClick={handleAtivarNotificacoes}
-              className="btn-primary !w-auto shrink-0 px-4"
-            >
-              Ativar
-            </button>
-          )}
-          {statusPush === "ativo" && (
-            <button
-              onClick={handleDesativarNotificacoes}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-              style={{
-                background: "var(--surface-raised)",
-                color: "var(--text-dim)",
-              }}
-            >
-              Desativar
-            </button>
-          )}
-        </div>
+          </section>
+        )}
 
         <section>
           <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--text-dim)]">
-            <Users size={15} /> Técnicos cadastrados ({tecnicos?.length ?? 0})
+            <Users size={15} /> Técnicos cadastrados ({aprovados.length})
           </h2>
           <div className="space-y-2">
-            {tecnicos?.map((t) => (
+            {aprovados.map((t) => (
               <div key={t.id} className="surface flex flex-col gap-3 p-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium break-words">{t.nome}</span>
-                    {t.isAdmin && (
-                      <span className="badge badge-success">admin</span>
-                    )}
+                    <span
+                      className={`badge ${t.papel === "ADMIN" ? "badge-success" : "badge-warning"}`}
+                    >
+                      {NOME_PAPEL[t.papel]}
+                    </span>
                   </div>
                   <div className="text-xs text-[var(--text-faint)]">
                     Matr. {t.matricula} · {t.funcao} · cadastrado em{" "}
                     {new Date(t.criadoEm).toLocaleDateString("pt-BR")}
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() =>
-                      handleAlternarAdmin(t.id, t.nome, !!t.isAdmin)
-                    }
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-                    style={{
-                      background: "var(--surface-raised)",
-                      color: "var(--text-dim)",
-                    }}
-                  >
-                    {t.isAdmin ? (
-                      <>
-                        <ShieldMinus size={12} /> Remover admin
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck size={12} /> Tornar admin
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => handleResetarPin(t.id, t.nome)}
-                    disabled={resetandoId === t.id}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-                    style={{
-                      background: "var(--surface-raised)",
-                      color: "var(--text-dim)",
-                    }}
-                  >
-                    <KeyRound size={12} /> Resetar PIN
-                  </button>
-                  <button
-                    onClick={() => handleExcluirTecnico(t.id, t.nome)}
-                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-                    style={{
-                      background: "var(--danger-soft)",
-                      color: "#fca5a5",
-                    }}
-                  >
-                    <Trash2 size={12} /> Excluir
-                  </button>
-                </div>
+                {ehAdmin && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      className="input !w-auto py-1.5 text-xs"
+                      value={t.papel}
+                      onChange={(e) =>
+                        handleDefinirPapel(
+                          t.id,
+                          t.nome,
+                          e.target.value as PapelTecnico
+                        )
+                      }
+                    >
+                      <option value="TECNICO">Técnico</option>
+                      <option value="VISUALIZADOR">Visualizador</option>
+                      <option value="ADMIN">Admin</option>
+                    </select>
+                    <button
+                      onClick={() => handleResetarPin(t.id, t.nome)}
+                      disabled={resetandoId === t.id}
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                      style={{
+                        background: "var(--surface-raised)",
+                        color: "var(--text-dim)",
+                      }}
+                    >
+                      <KeyRound size={12} /> Resetar PIN
+                    </button>
+                    <button
+                      onClick={() => handleExcluirTecnico(t.id, t.nome)}
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+                      style={{
+                        background: "var(--danger-soft)",
+                        color: "#fca5a5",
+                      }}
+                    >
+                      <Trash2 size={12} /> Excluir
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -339,26 +419,30 @@ export default function AdminPage() {
                           ? "Sincronizado"
                           : "Pendente"}
                       </span>
-                      <Link
-                        href={`/formularios/${SLUG_POR_TIPO[s.tipoFicha]}?sessaoId=${s.id}`}
-                        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
-                        style={{
-                          background: "var(--surface-raised)",
-                          color: "var(--text-dim)",
-                        }}
-                      >
-                        <Pencil size={11} /> Editar
-                      </Link>
-                      <button
-                        onClick={() => handleExcluirSessao(s)}
-                        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
-                        style={{
-                          background: "var(--danger-soft)",
-                          color: "#fca5a5",
-                        }}
-                      >
-                        <Trash2 size={11} /> Excluir
-                      </button>
+                      {ehAdmin && (
+                        <>
+                          <Link
+                            href={`/formularios/${SLUG_POR_TIPO[s.tipoFicha]}?sessaoId=${s.id}`}
+                            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
+                            style={{
+                              background: "var(--surface-raised)",
+                              color: "var(--text-dim)",
+                            }}
+                          >
+                            <Pencil size={11} /> Editar
+                          </Link>
+                          <button
+                            onClick={() => handleExcluirSessao(s)}
+                            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
+                            style={{
+                              background: "var(--danger-soft)",
+                              color: "#fca5a5",
+                            }}
+                          >
+                            <Trash2 size={11} /> Excluir
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="text-[var(--text-dim)]">

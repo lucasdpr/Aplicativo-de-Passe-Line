@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -15,9 +15,11 @@ import {
   Loader2,
   RefreshCw,
   Trash2,
+  CalendarDays,
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
+import { CalendarioMes } from "@/components/CalendarioMes";
 import { db } from "@/lib/db/dexie";
 import { puxarAtualizacoes, sincronizarPendentes, excluirSessao } from "@/lib/db/sync";
 import { useAuthStore } from "@/lib/auth";
@@ -42,6 +44,39 @@ export default function HistoricoPage() {
   const [gerandoId, setGerandoId] = useState<string | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
   const [ultimoErro, setUltimoErro] = useState<string[] | null>(null);
+  const [mostrarCalendario, setMostrarCalendario] = useState(false);
+  const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
+
+  const diasComMedicao = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of sessoes ?? []) set.add(s.data);
+    return set;
+  }, [sessoes]);
+
+  const sessoesDoFiltro = diaSelecionado
+    ? sessoes?.filter((s) => s.data === diaSelecionado)
+    : sessoes;
+
+  const gruposPorDia = useMemo(() => {
+    const mapa = new Map<string, SessaoMedicao[]>();
+    for (const s of sessoesDoFiltro ?? []) {
+      const lista = mapa.get(s.data) ?? [];
+      lista.push(s);
+      mapa.set(s.data, lista);
+    }
+    return [...mapa.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  }, [sessoesDoFiltro]);
+
+  function formatarDia(data: string) {
+    const d = new Date(`${data}T00:00:00`);
+    const texto = d.toLocaleDateString("pt-BR", {
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    return texto.charAt(0).toUpperCase() + texto.slice(1);
+  }
 
   useEffect(() => {
     puxarAtualizacoes().catch(() => {});
@@ -107,19 +142,46 @@ export default function HistoricoPage() {
           <h1 className="font-display text-xl font-bold tracking-tight">
             Histórico de medições
           </h1>
-          <button
-            onClick={handleSincronizarAgora}
-            disabled={sincronizando}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-            style={{
-              background: "var(--surface-raised)",
-              color: "var(--text-dim)",
-            }}
-          >
-            <RefreshCw size={13} className={sincronizando ? "animate-spin" : ""} />
-            Sincronizar agora
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => setMostrarCalendario((v) => !v)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+              style={{
+                background: mostrarCalendario
+                  ? "var(--primary-soft)"
+                  : "var(--surface-raised)",
+                color: mostrarCalendario
+                  ? "var(--primary-strong)"
+                  : "var(--text-dim)",
+              }}
+            >
+              <CalendarDays size={13} />
+              Calendário
+            </button>
+            <button
+              onClick={handleSincronizarAgora}
+              disabled={sincronizando}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+              style={{
+                background: "var(--surface-raised)",
+                color: "var(--text-dim)",
+              }}
+            >
+              <RefreshCw size={13} className={sincronizando ? "animate-spin" : ""} />
+              Sincronizar
+            </button>
+          </div>
         </div>
+
+        {mostrarCalendario && (
+          <div className="mb-4">
+            <CalendarioMes
+              diasComMedicao={diasComMedicao}
+              diaSelecionado={diaSelecionado}
+              onSelecionarDia={setDiaSelecionado}
+            />
+          </div>
+        )}
 
         {ultimoErro && (
           <div
@@ -139,81 +201,119 @@ export default function HistoricoPage() {
           </div>
         )}
 
-        <div className="space-y-2.5">
-          {sessoes?.map((s) => {
-            const info = FICHA_INFO[s.tipoFicha];
-            const Icon = info.icon;
-            const sincronizado = s.status === "SINCRONIZADO";
-            return (
-              <div key={s.id} className="surface flex items-start gap-3 p-4">
-                <div
-                  className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                  style={{ background: "var(--primary-soft)" }}
-                >
-                  <Icon size={17} style={{ color: "var(--primary-strong)" }} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-medium">{info.nome}</span>
-                    <span
-                      className={`badge shrink-0 ${sincronizado ? "badge-success" : "badge-warning"}`}
-                    >
-                      {sincronizado ? (
-                        <CheckCircle2 size={11} />
-                      ) : (
-                        <Clock size={11} />
-                      )}
-                      {sincronizado ? "Sincronizado" : "Pendente"}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-sm text-[var(--text-dim)]">
-                    {s.maquina} · Veio {s.veio} · {s.data}
-                  </div>
-                  <div className="text-xs text-[var(--text-faint)]">
-                    {s.tecnicoNome} — matr. {s.tecnicoMatricula} (
-                    {s.tecnicoFuncao})
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={() => gerarPdf(s.id)}
-                      disabled={!sincronizado || gerandoId === s.id}
-                      title={
-                        sincronizado
-                          ? "Gerar PDF oficial"
-                          : "Disponível após sincronizar com o servidor"
-                      }
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
-                      style={{
-                        background: "var(--primary-soft)",
-                        color: "var(--primary-strong)",
-                      }}
-                    >
-                      {gerandoId === s.id ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : (
-                        <FileDown size={13} />
-                      )}
-                      Gerar PDF
-                    </button>
-                    {tecnico?.isAdmin && (
-                      <button
-                        onClick={() => handleExcluirSessao(s)}
-                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-                        style={{
-                          background: "var(--danger-soft)",
-                          color: "#fca5a5",
-                        }}
-                      >
-                        <Trash2 size={13} /> Excluir
-                      </button>
-                    )}
-                  </div>
-                </div>
+        {sessoes && sessoes.length > 0 && gruposPorDia.length === 0 && (
+          <div className="surface p-8 text-center text-sm text-[var(--text-dim)]">
+            Nenhuma medição neste dia.
+          </div>
+        )}
+
+        <div className="space-y-5">
+          {gruposPorDia.map(([data, sessoesDoDia]) => (
+            <div key={data}>
+              <div className="mb-2 flex items-center gap-2">
+                <h2 className="text-sm font-semibold">{formatarDia(data)}</h2>
+                <span className="badge">{sessoesDoDia.length}</span>
               </div>
-            );
-          })}
+              <div className="space-y-2.5">
+                {sessoesDoDia.map((s) => (
+                  <CartaoSessao
+                    key={s.id}
+                    sessao={s}
+                    ehAdmin={tecnico?.papel === "ADMIN"}
+                    gerandoId={gerandoId}
+                    onGerarPdf={gerarPdf}
+                    onExcluir={handleExcluirSessao}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </main>
     </AuthGuard>
+  );
+}
+
+function CartaoSessao({
+  sessao: s,
+  ehAdmin,
+  gerandoId,
+  onGerarPdf,
+  onExcluir,
+}: {
+  sessao: SessaoMedicao;
+  ehAdmin: boolean;
+  gerandoId: string | null;
+  onGerarPdf: (id: string) => void;
+  onExcluir: (s: SessaoMedicao) => void;
+}) {
+  const info = FICHA_INFO[s.tipoFicha];
+  const Icon = info.icon;
+  const sincronizado = s.status === "SINCRONIZADO";
+  return (
+    <div className="surface flex items-start gap-3 p-4">
+      <div
+        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+        style={{ background: "var(--primary-soft)" }}
+      >
+        <Icon size={17} style={{ color: "var(--primary-strong)" }} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate font-medium">{info.nome}</span>
+          <span
+            className={`badge shrink-0 ${sincronizado ? "badge-success" : "badge-warning"}`}
+          >
+            {sincronizado ? (
+              <CheckCircle2 size={11} />
+            ) : (
+              <Clock size={11} />
+            )}
+            {sincronizado ? "Sincronizado" : "Pendente"}
+          </span>
+        </div>
+        <div className="mt-1 text-sm text-[var(--text-dim)]">
+          {s.maquina} · Veio {s.veio} · {s.data}
+        </div>
+        <div className="text-xs text-[var(--text-faint)]">
+          {s.tecnicoNome} — matr. {s.tecnicoMatricula} ({s.tecnicoFuncao})
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onGerarPdf(s.id)}
+            disabled={!sincronizado || gerandoId === s.id}
+            title={
+              sincronizado
+                ? "Gerar PDF oficial"
+                : "Disponível após sincronizar com o servidor"
+            }
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
+            style={{
+              background: "var(--primary-soft)",
+              color: "var(--primary-strong)",
+            }}
+          >
+            {gerandoId === s.id ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <FileDown size={13} />
+            )}
+            Gerar PDF
+          </button>
+          {ehAdmin && (
+            <button
+              onClick={() => onExcluir(s)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+              style={{
+                background: "var(--danger-soft)",
+                color: "#fca5a5",
+              }}
+            >
+              <Trash2 size={13} /> Excluir
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -9,6 +9,8 @@ import {
   cadastrarTecnico,
   useAuthStore,
   MatriculaJaCadastradaError,
+  CadastroPendenteError,
+  SemConexaoError,
 } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -17,14 +19,16 @@ export default function LoginPage() {
   const [modo, setModo] = useState<"entrar" | "cadastrar">("entrar");
   const [nome, setNome] = useState("");
   const [matricula, setMatricula] = useState("");
-  const [funcao, setFuncao] = useState("Técnico de Mecânica");
+  const [funcao, setFuncao] = useState("");
   const [pin, setPin] = useState("");
   const [erro, setErro] = useState("");
+  const [aviso, setAviso] = useState("");
   const [carregando, setCarregando] = useState(false);
 
   async function handleEntrar(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
+    setAviso("");
     setCarregando(true);
     try {
       const tecnico = await autenticarPorPin(matricula, pin);
@@ -34,6 +38,12 @@ export default function LoginPage() {
       }
       login(tecnico);
       router.push("/");
+    } catch (err) {
+      setErro(
+        err instanceof CadastroPendenteError
+          ? err.message
+          : "Não foi possível entrar. Tente novamente."
+      );
     } finally {
       setCarregando(false);
     }
@@ -42,6 +52,7 @@ export default function LoginPage() {
   async function handleCadastrar(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
+    setAviso("");
     if (pin.length < 4) {
       setErro("O PIN precisa ter pelo menos 4 dígitos.");
       return;
@@ -49,11 +60,18 @@ export default function LoginPage() {
     setCarregando(true);
     try {
       const tecnico = await cadastrarTecnico(nome, matricula, funcao, pin);
+      if (!tecnico.aprovado) {
+        setModo("entrar");
+        setAviso(
+          "Cadastro enviado! Peça pro admin da sua área aprovar seu acesso antes de você poder entrar."
+        );
+        return;
+      }
       login(tecnico);
       router.push("/");
     } catch (err) {
       setErro(
-        err instanceof MatriculaJaCadastradaError
+        err instanceof MatriculaJaCadastradaError || err instanceof SemConexaoError
           ? err.message
           : "Não foi possível cadastrar."
       );
@@ -145,6 +163,7 @@ export default function LoginPage() {
                 <Campo label="Função">
                   <input
                     required
+                    placeholder="Ex.: Técnico de Mecânica, Engenheiro, Gerente..."
                     value={funcao}
                     onChange={(e) => setFuncao(e.target.value)}
                     className="input"
@@ -192,6 +211,14 @@ export default function LoginPage() {
                 style={{ background: "var(--danger-soft)", color: "#fca5a5" }}
               >
                 {erro}
+              </p>
+            )}
+            {aviso && (
+              <p
+                className="rounded-lg px-3 py-2 text-sm"
+                style={{ background: "var(--warning-soft)", color: "var(--warning)" }}
+              >
+                {aviso}
               </p>
             )}
 
