@@ -367,7 +367,7 @@ function GapForm() {
 
 export default function GapPage() {
   return (
-    <AuthGuard>
+    <AuthGuard bloquearVisualizador>
       <StatusBar />
       <Suspense fallback={null}>
         <GapForm />

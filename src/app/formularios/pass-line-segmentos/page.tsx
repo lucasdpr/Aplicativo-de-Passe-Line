@@ -375,7 +375,7 @@ function PassLineSegmentosForm() {
 
 export default function PassLineSegmentosPage() {
   return (
-    <AuthGuard>
+    <AuthGuard bloquearVisualizador>
       <StatusBar />
       <Suspense fallback={null}>
         <PassLineSegmentosForm />

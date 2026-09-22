@@ -19,18 +19,15 @@ interface ItemNav {
   icon: typeof ClipboardList;
 }
 
-const ITENS_BASE: ItemNav[] = [
-  { href: "/", label: "Fazer medição", icon: ClipboardList },
-  { href: "/historico", label: "Histórico", icon: History },
-  { href: "/prazos", label: "Prazos", icon: AlarmClock },
-];
-
 export function AppSidebar({ papel }: { papel?: PapelTecnico }) {
   const pathname = usePathname();
   const [abertoMobile, setAbertoMobile] = useState(false);
+  const ehVisualizador = papel === "VISUALIZADOR";
 
   const itens: ItemNav[] = [
-    ...ITENS_BASE,
+    ...(ehVisualizador ? [] : [{ href: "/", label: "Fazer medição", icon: ClipboardList }]),
+    { href: "/historico", label: "Histórico", icon: History },
+    { href: "/prazos", label: "Prazos", icon: AlarmClock },
     ...(papel === "ADMIN" || papel === "VISUALIZADOR"
       ? [{ href: "/admin", label: "Painel admin", icon: ShieldCheck }]
       : []),
