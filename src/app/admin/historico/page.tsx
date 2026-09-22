@@ -77,15 +77,42 @@ export default function AdminHistoricoPage() {
     ? sessoesPorTecnico?.filter((s) => s.data === diaSelecionado)
     : sessoesPorTecnico;
 
-  const gruposPorDia = useMemo(() => {
-    const mapa = new Map<string, SessaoMedicao[]>();
+  const gruposPorMes = useMemo(() => {
+    const porMes = new Map<string, Map<string, SessaoMedicao[]>>();
     for (const s of sessoesFiltradas ?? []) {
-      const lista = mapa.get(s.data) ?? [];
+      const mesChave = s.data.slice(0, 7); // yyyy-mm
+      const dias = porMes.get(mesChave) ?? new Map<string, SessaoMedicao[]>();
+      const lista = dias.get(s.data) ?? [];
       lista.push(s);
-      mapa.set(s.data, lista);
+      dias.set(s.data, lista);
+      porMes.set(mesChave, dias);
     }
-    return [...mapa.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+    return [...porMes.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([mes, dias]) => ({
+        mes,
+        total: [...dias.values()].reduce((n, l) => n + l.length, 0),
+        dias: [...dias.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)),
+      }));
   }, [sessoesFiltradas]);
+
+  // null = ainda não mexeu em nada; usa o mês mais recente aberto por padrão
+  const [mesesAbertosState, setMesesAbertosState] = useState<Set<string> | null>(null);
+  const mesesAbertos =
+    mesesAbertosState ?? new Set(gruposPorMes.length > 0 ? [gruposPorMes[0].mes] : []);
+
+  function alternarMes(mes: string) {
+    const novo = new Set(mesesAbertos);
+    if (novo.has(mes)) novo.delete(mes);
+    else novo.add(mes);
+    setMesesAbertosState(novo);
+  }
+
+  function formatarMes(mesChave: string) {
+    const d = new Date(`${mesChave}-01T00:00:00`);
+    const texto = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    return texto.charAt(0).toUpperCase() + texto.slice(1);
+  }
 
   function formatarDia(data: string) {
     const d = new Date(`${data}T00:00:00`);
@@ -143,23 +170,40 @@ export default function AdminHistoricoPage() {
         </div>
       )}
 
-      <div className="space-y-5">
-        {gruposPorDia.length === 0 && (
+      <div className="space-y-3">
+        {gruposPorMes.length === 0 && (
           <div className="surface p-6 text-center text-sm text-[var(--text-dim)]">
             Nenhuma medição encontrada.
           </div>
         )}
 
-        {gruposPorDia.map(([data, sessoesDoDia]) => (
-          <div key={data}>
-            <div className="mb-2 flex items-center gap-2">
-              <h3 className="text-sm font-semibold">{formatarDia(data)}</h3>
-              <span className="badge">{sessoesDoDia.length}</span>
-            </div>
-            <div className="space-y-2">
-              {sessoesDoDia.map((s) => {
+        {gruposPorMes.map(({ mes, total, dias }) => {
+          const aberto = mesesAbertos.has(mes);
+          return (
+            <div key={mes} className="surface overflow-hidden p-0">
+              <button
+                onClick={() => alternarMes(mes)}
+                className="flex w-full items-center justify-between gap-2 p-3.5 text-left transition hover:bg-[var(--surface-raised)]"
+              >
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  {formatarMes(mes)}
+                  <span className="badge">{total}</span>
+                </span>
+                <ChevronDown size={16} className={`text-[var(--text-faint)] transition ${aberto ? "rotate-180" : ""}`} />
+              </button>
+
+              {aberto && (
+                <div className="space-y-5 border-t p-3.5" style={{ borderColor: "var(--border)" }}>
+                  {dias.map(([data, sessoesDoDia]) => (
+                    <div key={data}>
+                      <div className="mb-2 flex items-center gap-2">
+                        <h3 className="text-sm font-semibold">{formatarDia(data)}</h3>
+                        <span className="badge">{sessoesDoDia.length}</span>
+                      </div>
+                      <div className="space-y-2">
+                        {sessoesDoDia.map((s) => {
                 const historicoEdicoes = edicoesPorSessao.get(s.id) ?? [];
-                const aberto = expandido === s.id;
+                const abertoEdicao = expandido === s.id;
                 return (
                   <div key={s.id} className="surface p-3 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -214,14 +258,14 @@ export default function AdminHistoricoPage() {
                     {historicoEdicoes.length > 0 && (
                       <div className="mt-2 border-t pt-2" style={{ borderColor: "var(--border)" }}>
                         <button
-                          onClick={() => setExpandido(aberto ? null : s.id)}
+                          onClick={() => setExpandido(abertoEdicao ? null : s.id)}
                           className="flex items-center gap-1 text-xs text-[var(--primary-strong)]"
                         >
-                          <ChevronDown size={12} className={aberto ? "rotate-180" : ""} />
+                          <ChevronDown size={12} className={abertoEdicao ? "rotate-180" : ""} />
                           {historicoEdicoes.length} alteração
                           {historicoEdicoes.length > 1 ? "ões" : ""}
                         </button>
-                        {aberto && (
+                        {abertoEdicao && (
                           <div className="mt-2 space-y-2">
                             {historicoEdicoes.map((e, i) => (
                               <div
@@ -253,9 +297,14 @@ export default function AdminHistoricoPage() {
                   </div>
                 );
               })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
