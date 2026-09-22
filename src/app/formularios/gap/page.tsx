@@ -247,6 +247,14 @@ function GapForm() {
 
       <SessaoHeader value={header} onChange={setHeader} />
 
+      <p
+        className="rounded-lg px-3 py-2 text-xs"
+        style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
+      >
+        Nas colunas <strong>Ajuste</strong>: escreva <strong>OK</strong> se não precisou
+        ajustar, ou anote o que foi feito. Não é campo de número.
+      </p>
+
       <div className="surface scrollbar-thin max-h-[60vh] overflow-auto">
         <table className="table-industrial min-w-full text-sm">
           <thead>
@@ -327,7 +335,7 @@ function GapForm() {
                           min={ehTexto ? undefined : 0}
                           max={ehTexto ? undefined : 999.99}
                           inputMode={ehTexto ? "text" : "decimal"}
-                          placeholder={ehTexto ? "OK" : "—"}
+                          placeholder="—"
                           className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
                           value={valor ?? ""}
                           onChange={(e) =>
