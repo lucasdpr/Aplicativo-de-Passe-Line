@@ -10,13 +10,16 @@ export type TipoFicha =
   | "EMPENO_DESGASTE"
   | "PASS_LINE_SEGMENTOS";
 
+export type PapelTecnico = "TECNICO" | "VISUALIZADOR" | "ADMIN";
+
 export interface Tecnico {
   id: string;
   nome: string;
   matricula: string;
   funcao: string;
-  pin: string; // hashed locally, never sent as-is
-  isAdmin?: boolean;
+  pin: string; // hashed, never sent as-is
+  papel: PapelTecnico;
+  aprovado: boolean; // precisa de aprovação de um admin antes de logar
   criadoEm: string; // ISO datetime
 }
 

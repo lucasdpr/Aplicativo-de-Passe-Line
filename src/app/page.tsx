@@ -95,14 +95,16 @@ export default function Home() {
           Ver histórico de medições
         </Link>
 
-        {tecnico?.isAdmin && (
+        {(tecnico?.papel === "ADMIN" || tecnico?.papel === "VISUALIZADOR") && (
           <Link
             href="/admin"
             className="surface mt-3 flex items-center justify-center gap-2 p-4 text-sm font-medium transition hover:border-[var(--border-strong)]"
             style={{ color: "var(--text-dim)" }}
           >
             <ShieldCheck size={16} />
-            Painel do administrador
+            {tecnico?.papel === "ADMIN"
+              ? "Painel do administrador"
+              : "Painel de visualização"}
           </Link>
         )}
       </main>
