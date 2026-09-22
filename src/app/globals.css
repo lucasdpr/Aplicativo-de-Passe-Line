@@ -234,6 +234,25 @@ body {
   white-space: nowrap;
 }
 
+/* Cabeçalho de 2 linhas: nome do grupo (ex.: Oeste/Leste) em cima,
+   o campo específico embaixo — ajuda a saber em qual bloco de colunas
+   você está numa tabela larga, sem precisar contar colunas. */
+.table-industrial thead tr:first-child th {
+  height: 1.7rem;
+  padding: 0.3rem 0.6rem;
+}
+
+.table-industrial thead tr:last-child th:not([rowspan]) {
+  top: 1.7rem;
+}
+
+.grupo-coluna-titulo {
+  text-align: center;
+  font-size: 0.62rem;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border);
+}
+
 .table-industrial tbody tr {
   border-bottom: 1px solid var(--border);
 }
@@ -279,7 +298,7 @@ body {
 }
 
 /* Mantém a coluna Nº CAD visível ao rolar a tabela para o lado no celular */
-.table-industrial thead th:first-child,
+.table-industrial thead th.n-cad-header,
 .table-industrial tbody td:first-child {
   position: sticky;
   left: 0;

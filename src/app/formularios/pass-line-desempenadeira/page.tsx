@@ -16,6 +16,7 @@ import { db } from "@/lib/db/dexie";
 import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
+import { agruparCampos, clamparNumero, estiloColuna } from "@/lib/tabelaCampos";
 import {
   N_CAD_RANGE,
   TOLERANCIAS,
@@ -33,14 +34,16 @@ function linhasIniciais(): LinhaPassLineDesempenadeira[] {
   return linhas;
 }
 
-const CAMPOS: { key: keyof LinhaPassLineDesempenadeira; label: string }[] = [
-  { key: "oesteMedida", label: "Oeste Medida" },
-  { key: "oesteAcionado", label: "Oeste Acionado" },
-  { key: "oesteAjuste", label: "Oeste Ajuste" },
-  { key: "lesteMedida", label: "Leste Medida" },
-  { key: "lesteAcionado", label: "Leste Acionado" },
-  { key: "lesteAjuste", label: "Leste Ajuste" },
+const CAMPOS: { key: keyof LinhaPassLineDesempenadeira; label: string; grupo: string }[] = [
+  { key: "oesteMedida", label: "Medida", grupo: "Oeste" },
+  { key: "oesteAcionado", label: "Acionado", grupo: "Oeste" },
+  { key: "oesteAjuste", label: "Ajuste", grupo: "Oeste" },
+  { key: "lesteMedida", label: "Medida", grupo: "Leste" },
+  { key: "lesteAcionado", label: "Acionado", grupo: "Leste" },
+  { key: "lesteAjuste", label: "Ajuste", grupo: "Leste" },
 ];
+
+const GRUPOS_CAMPOS = agruparCampos(CAMPOS);
 
 function foraDaTolerancia(campo: string, valor: number | undefined) {
   if (valor === undefined || Number.isNaN(valor)) return false;
@@ -109,7 +112,11 @@ function PassLineDesempenadeiraForm() {
     campo: keyof LinhaPassLineDesempenadeira,
     valorTexto: string
   ) {
-    const valor = valorTexto === "" ? undefined : Number(valorTexto);
+    let valor: number | undefined = valorTexto === "" ? undefined : Number(valorTexto);
+    if (valor !== undefined) {
+      const ehAjuste = campo.toLowerCase().includes("ajuste");
+      valor = clamparNumero(valor, ehAjuste ? -9.99 : 0, ehAjuste ? 9.99 : 999.99);
+    }
     setLinhas((prev) =>
       prev.map((l) => (l.nCad === nCad ? { ...l, [campo]: valor } : l))
     );
@@ -241,35 +248,55 @@ function PassLineDesempenadeiraForm() {
         <table className="table-industrial min-w-full text-sm">
           <thead>
             <tr>
-              <th className="text-left">Nº CAD</th>
-              {CAMPOS.map((c) => (
-                <th key={c.key}>{c.label}</th>
+              <th rowSpan={2} className="n-cad-header text-left align-bottom">Nº CAD</th>
+              {GRUPOS_CAMPOS.map((g) => (
+                <th
+                  key={g.nome}
+                  colSpan={g.campos.length}
+                  className="grupo-coluna-titulo"
+                  style={estiloColuna(g.indice, true)}
+                >
+                  {g.nome}
+                </th>
               ))}
+            </tr>
+            <tr>
+              {GRUPOS_CAMPOS.map((g) =>
+                g.campos.map((c, i) => (
+                  <th key={c.key} style={estiloColuna(g.indice, i === 0)}>
+                    {c.label}
+                  </th>
+                ))
+              )}
             </tr>
           </thead>
           <tbody>
             {linhas.map((l) => (
               <tr key={l.nCad}>
                 <td className="n-cad-cell">{l.nCad}</td>
-                {CAMPOS.map((c) => {
-                  const valor = l[c.key] as number | undefined;
-                  const fora = foraDaTolerancia(c.key, valor);
-                  return (
-                    <td key={c.key}>
-                      <input
-                        type="number"
-                        step="0.01"
-                        inputMode="decimal"
-                        placeholder="—"
-                        className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
-                        value={valor ?? ""}
-                        onChange={(e) =>
-                          setValor(l.nCad, c.key, e.target.value)
-                        }
-                      />
-                    </td>
-                  );
-                })}
+                {GRUPOS_CAMPOS.map((g) =>
+                  g.campos.map((c, i) => {
+                    const valor = l[c.key] as number | undefined;
+                    const fora = foraDaTolerancia(c.key, valor);
+                    return (
+                      <td key={c.key} style={estiloColuna(g.indice, i === 0)}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={c.key.toLowerCase().includes("ajuste") ? -9.99 : 0}
+                          max={c.key.toLowerCase().includes("ajuste") ? 9.99 : 999.99}
+                          inputMode="decimal"
+                          placeholder="—"
+                          className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
+                          value={valor ?? ""}
+                          onChange={(e) =>
+                            setValor(l.nCad, c.key, e.target.value)
+                          }
+                        />
+                      </td>
+                    );
+                  })
+                )}
               </tr>
             ))}
           </tbody>

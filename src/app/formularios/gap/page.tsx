@@ -17,6 +17,7 @@ import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
 import { N_CAD_RANGE, type LinhaGap, type SessaoMedicao } from "@/types";
+import { agruparCampos, clamparNumero, estiloColuna } from "@/lib/tabelaCampos";
 
 const GAP_NOMINAL_PADRAO = 258.0;
 const TOLERANCIA_PADRAO = 0.5;
@@ -33,16 +34,18 @@ function linhasIniciais(): LinhaGap[] {
   return linhas;
 }
 
-const CAMPOS_MEDIDA: { key: keyof LinhaGap; label: string }[] = [
-  { key: "primeiraAcionado", label: "1ª Acionado" },
-  { key: "primeiraCentro", label: "1ª Centro" },
-  { key: "primeiraNaoAcionado", label: "1ª Não Acionado" },
-  { key: "ajusteAcionado", label: "Ajuste Acionado" },
-  { key: "ajusteNaoAcionado", label: "Ajuste Não Acionado" },
-  { key: "segundaAcionado", label: "2ª Acionado" },
-  { key: "segundaCentro", label: "2ª Centro" },
-  { key: "segundaNaoAcionado", label: "2ª Não Acionado" },
+const CAMPOS_MEDIDA: { key: keyof LinhaGap; label: string; grupo: string }[] = [
+  { key: "primeiraAcionado", label: "Acionado", grupo: "1ª Medição" },
+  { key: "primeiraCentro", label: "Centro", grupo: "1ª Medição" },
+  { key: "primeiraNaoAcionado", label: "Não Acionado", grupo: "1ª Medição" },
+  { key: "ajusteAcionado", label: "Acionado", grupo: "Ajuste" },
+  { key: "ajusteNaoAcionado", label: "Não Acionado", grupo: "Ajuste" },
+  { key: "segundaAcionado", label: "Acionado", grupo: "2ª Medição" },
+  { key: "segundaCentro", label: "Centro", grupo: "2ª Medição" },
+  { key: "segundaNaoAcionado", label: "Não Acionado", grupo: "2ª Medição" },
 ];
+
+const GRUPOS_CAMPOS_MEDIDA = agruparCampos(CAMPOS_MEDIDA);
 
 // "Ajuste" na ficha de papel é "OK" (sem ajuste) ou uma marcação de nota —
 // não é um valor em mm, por isso é texto livre, não número.
@@ -112,12 +115,15 @@ function GapForm() {
   }, [sessaoId]);
 
   function setValor(nCad: number, campo: keyof LinhaGap, valorTexto: string) {
-    const valor: string | number | undefined =
+    let valor: string | number | undefined =
       valorTexto === ""
         ? undefined
         : CAMPOS_TEXTO.has(campo)
           ? valorTexto
           : Number(valorTexto);
+    if (typeof valor === "number") {
+      valor = clamparNumero(valor, 0, 999.99);
+    }
     setLinhas((prev) =>
       prev.map((l) => (l.nCad === nCad ? { ...l, [campo]: valor } : l))
     );
@@ -245,12 +251,28 @@ function GapForm() {
         <table className="table-industrial min-w-full text-sm">
           <thead>
             <tr>
-              <th className="text-left">Nº CAD</th>
-              <th>GAP nominal</th>
-              <th>Tolerância (±mm)</th>
-              {CAMPOS_MEDIDA.map((c) => (
-                <th key={c.key}>{c.label}</th>
+              <th rowSpan={2} className="n-cad-header text-left align-bottom">Nº CAD</th>
+              <th rowSpan={2} className="align-bottom">GAP nominal</th>
+              <th rowSpan={2} className="align-bottom">Tolerância (±mm)</th>
+              {GRUPOS_CAMPOS_MEDIDA.map((g) => (
+                <th
+                  key={g.nome}
+                  colSpan={g.campos.length}
+                  className="grupo-coluna-titulo"
+                  style={estiloColuna(g.indice, true)}
+                >
+                  {g.nome}
+                </th>
               ))}
+            </tr>
+            <tr>
+              {GRUPOS_CAMPOS_MEDIDA.map((g) =>
+                g.campos.map((c, i) => (
+                  <th key={c.key} style={estiloColuna(g.indice, i === 0)}>
+                    {c.label}
+                  </th>
+                ))
+              )}
             </tr>
           </thead>
           <tbody>
@@ -261,6 +283,8 @@ function GapForm() {
                   <input
                     type="number"
                     step="0.1"
+                    min={0}
+                    max={999.99}
                     inputMode="decimal"
                     className="input-cell"
                     value={l.gapNominal}
@@ -273,6 +297,8 @@ function GapForm() {
                   <input
                     type="number"
                     step="0.1"
+                    min={0}
+                    max={99.99}
                     inputMode="decimal"
                     className="input-cell"
                     value={l.toleranciaMm}
@@ -281,33 +307,37 @@ function GapForm() {
                     }
                   />
                 </td>
-                {CAMPOS_MEDIDA.map((c) => {
-                  const ehTexto = CAMPOS_TEXTO.has(c.key);
-                  const valor = l[c.key] as string | number | undefined;
-                  const fora = ehTexto
-                    ? false
-                    : foraDaTolerancia(
-                        c.key,
-                        valor as number | undefined,
-                        l.gapNominal,
-                        l.toleranciaMm
-                      );
-                  return (
-                    <td key={c.key}>
-                      <input
-                        type={ehTexto ? "text" : "number"}
-                        step={ehTexto ? undefined : "0.1"}
-                        inputMode={ehTexto ? "text" : "decimal"}
-                        placeholder={ehTexto ? "OK" : "—"}
-                        className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
-                        value={valor ?? ""}
-                        onChange={(e) =>
-                          setValor(l.nCad, c.key, e.target.value)
-                        }
-                      />
-                    </td>
-                  );
-                })}
+                {GRUPOS_CAMPOS_MEDIDA.map((g) =>
+                  g.campos.map((c, i) => {
+                    const ehTexto = CAMPOS_TEXTO.has(c.key);
+                    const valor = l[c.key] as string | number | undefined;
+                    const fora = ehTexto
+                      ? false
+                      : foraDaTolerancia(
+                          c.key,
+                          valor as number | undefined,
+                          l.gapNominal,
+                          l.toleranciaMm
+                        );
+                    return (
+                      <td key={c.key} style={estiloColuna(g.indice, i === 0)}>
+                        <input
+                          type={ehTexto ? "text" : "number"}
+                          step={ehTexto ? undefined : "0.1"}
+                          min={ehTexto ? undefined : 0}
+                          max={ehTexto ? undefined : 999.99}
+                          inputMode={ehTexto ? "text" : "decimal"}
+                          placeholder={ehTexto ? "OK" : "—"}
+                          className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
+                          value={valor ?? ""}
+                          onChange={(e) =>
+                            setValor(l.nCad, c.key, e.target.value)
+                          }
+                        />
+                      </td>
+                    );
+                  })
+                )}
               </tr>
             ))}
           </tbody>
