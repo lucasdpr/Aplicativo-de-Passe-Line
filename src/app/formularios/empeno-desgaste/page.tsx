@@ -17,6 +17,7 @@ import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
 import { N_CAD_RANGE, type LinhaEmpenoDesgaste, type SessaoMedicao } from "@/types";
+import { agruparCampos, clamparNumero, estiloColuna } from "@/lib/tabelaCampos";
 
 function linhasIniciais(): LinhaEmpenoDesgaste[] {
   const linhas: LinhaEmpenoDesgaste[] = [];
@@ -26,20 +27,21 @@ function linhasIniciais(): LinhaEmpenoDesgaste[] {
   return linhas;
 }
 
-const CAMPOS_EMPENO: { key: keyof LinhaEmpenoDesgaste; label: string }[] = [
-  { key: "empenoSuperior", label: "Empeno Superior" },
-  { key: "empenoInferior", label: "Empeno Inferior" },
-  { key: "empenoPar", label: "Empeno Par" },
+const CAMPOS_EMPENO: { key: keyof LinhaEmpenoDesgaste; label: string; grupo: string }[] = [
+  { key: "empenoSuperior", label: "Superior", grupo: "Empeno" },
+  { key: "empenoInferior", label: "Inferior", grupo: "Empeno" },
+  { key: "empenoPar", label: "Par", grupo: "Empeno" },
 ];
 
-const CAMPOS_DESGASTE: { key: keyof LinhaEmpenoDesgaste; label: string }[] = [
-  { key: "desgasteSuperior", label: "Desgaste Superior" },
-  { key: "desgasteInferior", label: "Desgaste Inferior" },
-  { key: "desgastePar", label: "Desgaste Par" },
+const CAMPOS_DESGASTE: { key: keyof LinhaEmpenoDesgaste; label: string; grupo: string }[] = [
+  { key: "desgasteSuperior", label: "Superior", grupo: "Desgaste" },
+  { key: "desgasteInferior", label: "Inferior", grupo: "Desgaste" },
+  { key: "desgastePar", label: "Par", grupo: "Desgaste" },
 ];
 
 const CAMPOS = [...CAMPOS_EMPENO, ...CAMPOS_DESGASTE];
 const CAMPOS_TEXTO = new Set(CAMPOS_EMPENO.map((c) => c.key));
+const GRUPOS_CAMPOS = agruparCampos(CAMPOS);
 
 function headerDeSessao(s: SessaoMedicao): SessaoHeaderValue {
   return {
@@ -102,12 +104,15 @@ function EmpenoDesgasteForm() {
     campo: keyof LinhaEmpenoDesgaste,
     valorTexto: string
   ) {
-    const valor: string | number | undefined =
+    let valor: string | number | undefined =
       valorTexto === ""
         ? undefined
         : CAMPOS_TEXTO.has(campo)
           ? valorTexto
           : Number(valorTexto);
+    if (typeof valor === "number") {
+      valor = clamparNumero(valor, 0, 999.99);
+    }
     setLinhas((prev) =>
       prev.map((l) => (l.nCad === nCad ? { ...l, [campo]: valor } : l))
     );
@@ -238,35 +243,55 @@ function EmpenoDesgasteForm() {
         <table className="table-industrial min-w-full text-sm">
           <thead>
             <tr>
-              <th className="text-left">Nº CAD</th>
-              {CAMPOS.map((c) => (
-                <th key={c.key}>{c.label}</th>
+              <th rowSpan={2} className="n-cad-header text-left align-bottom">Nº CAD</th>
+              {GRUPOS_CAMPOS.map((g) => (
+                <th
+                  key={g.nome}
+                  colSpan={g.campos.length}
+                  className="grupo-coluna-titulo"
+                  style={estiloColuna(g.indice, true)}
+                >
+                  {g.nome}
+                </th>
               ))}
+            </tr>
+            <tr>
+              {GRUPOS_CAMPOS.map((g) =>
+                g.campos.map((c, i) => (
+                  <th key={c.key} style={estiloColuna(g.indice, i === 0)}>
+                    {c.label}
+                  </th>
+                ))
+              )}
             </tr>
           </thead>
           <tbody>
             {linhas.map((l) => (
               <tr key={l.nCad}>
                 <td className="n-cad-cell">{l.nCad}</td>
-                {CAMPOS.map((c) => {
-                  const ehTexto = CAMPOS_TEXTO.has(c.key);
-                  const valor = l[c.key] as string | number | undefined;
-                  return (
-                    <td key={c.key}>
-                      <input
-                        type={ehTexto ? "text" : "number"}
-                        step={ehTexto ? undefined : "0.01"}
-                        inputMode={ehTexto ? "text" : "decimal"}
-                        placeholder="—"
-                        className="input-cell"
-                        value={valor ?? ""}
-                        onChange={(e) =>
-                          setValor(l.nCad, c.key, e.target.value)
-                        }
-                      />
-                    </td>
-                  );
-                })}
+                {GRUPOS_CAMPOS.map((g) =>
+                  g.campos.map((c, i) => {
+                    const ehTexto = CAMPOS_TEXTO.has(c.key);
+                    const valor = l[c.key] as string | number | undefined;
+                    return (
+                      <td key={c.key} style={estiloColuna(g.indice, i === 0)}>
+                        <input
+                          type={ehTexto ? "text" : "number"}
+                          step={ehTexto ? undefined : "0.01"}
+                          min={ehTexto ? undefined : 0}
+                          max={ehTexto ? undefined : 999.99}
+                          inputMode={ehTexto ? "text" : "decimal"}
+                          placeholder="—"
+                          className="input-cell"
+                          value={valor ?? ""}
+                          onChange={(e) =>
+                            setValor(l.nCad, c.key, e.target.value)
+                          }
+                        />
+                      </td>
+                    );
+                  })
+                )}
               </tr>
             ))}
           </tbody>

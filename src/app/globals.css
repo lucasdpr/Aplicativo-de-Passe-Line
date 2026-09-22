@@ -21,6 +21,15 @@
   --success: #22c55e;
   --success-soft: rgba(34, 197, 94, 0.14);
 
+  /* Acentos de identidade por ficha — remetem a material de usina
+     (aço, brasa, grafite) em vez de repetir o mesmo teal em tudo. */
+  --accent-steel: #7dabc9;
+  --accent-steel-soft: rgba(125, 171, 201, 0.12);
+  --accent-ember: #d97757;
+  --accent-ember-soft: rgba(217, 119, 87, 0.13);
+  --accent-slate: #9297a8;
+  --accent-slate-soft: rgba(146, 151, 168, 0.12);
+
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.55);
 }
@@ -110,6 +119,14 @@ body {
   font-variant-numeric: tabular-nums;
   font-family: var(--font-geist-mono), monospace;
   transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+@media (pointer: coarse) {
+  .input-cell {
+    min-width: 5rem;
+    padding: 0.55rem 0.6rem;
+    font-size: 0.95rem;
+  }
 }
 
 .input-cell::placeholder {
@@ -217,16 +234,60 @@ body {
   white-space: nowrap;
 }
 
+/* Cabeçalho de 2 linhas: nome do grupo (ex.: Oeste/Leste) em cima,
+   o campo específico embaixo — ajuda a saber em qual bloco de colunas
+   você está numa tabela larga, sem precisar contar colunas. */
+.table-industrial thead tr:first-child th {
+  height: 1.7rem;
+  padding: 0.3rem 0.6rem;
+}
+
+.table-industrial thead tr:last-child th:not([rowspan]) {
+  top: 1.7rem;
+}
+
+.grupo-coluna-titulo {
+  text-align: center;
+  font-size: 0.62rem;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border);
+}
+
 .table-industrial tbody tr {
   border-bottom: 1px solid var(--border);
+}
+
+.table-industrial tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.table-industrial tbody tr:nth-child(even) td:first-child {
+  background: var(--surface-raised);
 }
 
 .table-industrial tbody tr:hover {
   background: rgba(255, 255, 255, 0.02);
 }
 
+/* Destaca a linha inteira enquanto o técnico está preenchendo um campo dela
+   — em telas grandes de 37 linhas é fácil perder onde se está. */
+.table-industrial tbody tr:focus-within {
+  background: var(--primary-soft);
+}
+
+.table-industrial tbody tr:focus-within td:first-child {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
 .table-industrial tbody td {
-  padding: 0.3rem 0.5rem;
+  padding: 0.45rem 0.5rem;
+}
+
+@media (pointer: coarse) {
+  .table-industrial tbody td {
+    padding: 0.65rem 0.5rem;
+  }
 }
 
 .n-cad-cell {
@@ -237,7 +298,7 @@ body {
 }
 
 /* Mantém a coluna Nº CAD visível ao rolar a tabela para o lado no celular */
-.table-industrial thead th:first-child,
+.table-industrial thead th.n-cad-header,
 .table-industrial tbody td:first-child {
   position: sticky;
   left: 0;

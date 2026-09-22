@@ -47,12 +47,21 @@ export function LembretePrazos() {
       <button
         type="button"
         onClick={() => setExpandido(true)}
-        className="mx-4 mb-3 flex w-[calc(100%-2rem)] items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition"
-        style={{ background: "var(--warning-soft)", color: "var(--warning)" }}
+        className="surface mx-4 mb-3 flex w-[calc(100%-2rem)] items-center gap-3 p-3 text-left text-sm transition hover:border-[var(--border-strong)]"
       >
-        <AlarmClock size={14} />
-        {prazos.length} medição{prazos.length === 1 ? "" : "ões"} próxima
-        {prazos.length === 1 ? "" : "s"} do prazo · toque pra ver
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+          style={{ background: "var(--warning-soft)" }}
+        >
+          <AlarmClock size={16} style={{ color: "var(--warning)" }} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium">
+            {prazos.length} medição{prazos.length === 1 ? "" : "ões"} próxima
+            {prazos.length === 1 ? "" : "s"} do prazo
+          </div>
+          <div className="truncate text-xs text-[var(--text-faint)]">Toque pra ver</div>
+        </div>
       </button>
     );
   }

@@ -16,6 +16,7 @@ import { db } from "@/lib/db/dexie";
 import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
+import { clamparNumero } from "@/lib/tabelaCampos";
 import {
   SEGMENTOS_PADRAO,
   TOLERANCIAS,
@@ -120,7 +121,8 @@ function PassLineSegmentosForm() {
     posicao: number,
     valorTexto: string
   ) {
-    const valor = valorTexto === "" ? undefined : Number(valorTexto);
+    const valor =
+      valorTexto === "" ? undefined : clamparNumero(Number(valorTexto), -9.99, 9.99);
     setLeituras((prev) =>
       prev.map((l) =>
         l.segmento === segmento && l.lado === lado && l.posicao === posicao
@@ -313,6 +315,8 @@ function PassLineSegmentosForm() {
                             <input
                               type="number"
                               step="0.01"
+                              min={-9.99}
+                              max={9.99}
                               inputMode="decimal"
                               placeholder={`P${l.posicao}`}
                               className={`input-cell !w-16 !rounded-none !border-0 !bg-transparent text-center ${fora ? "input-fora-tolerancia" : ""}`}

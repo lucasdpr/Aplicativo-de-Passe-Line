@@ -48,17 +48,17 @@ export function PainelPrazos() {
       )}
 
       {prazos && prazos.length > 0 && (
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {prazos.map((p) => {
             const s = statusDe(p.diasRestantes);
             return (
               <div
                 key={`${p.tipoFicha}-${p.maquina}-${p.veio}`}
-                className="surface flex items-center justify-between gap-2 p-3"
+                className="surface flex items-start justify-between gap-3 p-3"
               >
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{comboLabel(p)}</div>
-                  <div className="text-xs text-[var(--text-faint)]">
+                  <div className="text-sm font-medium leading-snug">{comboLabel(p)}</div>
+                  <div className="mt-0.5 text-xs text-[var(--text-faint)]">
                     Última medição: {new Date(`${p.ultimaMedicaoEm}T00:00:00`).toLocaleDateString("pt-BR")}
                   </div>
                 </div>
