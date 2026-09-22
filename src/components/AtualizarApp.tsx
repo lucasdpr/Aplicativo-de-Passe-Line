@@ -44,6 +44,18 @@ export function AtualizarApp() {
       reg.update().catch(() => {});
     });
 
+    // continua checando por atualização enquanto o app fica aberto
+    // (o PWA instalado pode ficar aberto por dias sem recarregar sozinho)
+    const intervalo = setInterval(() => {
+      registro?.update().catch(() => {});
+    }, 5 * 60 * 1000);
+    function aoVoltarPraTela() {
+      if (document.visibilityState === "visible") {
+        registro?.update().catch(() => {});
+      }
+    }
+    document.addEventListener("visibilitychange", aoVoltarPraTela);
+
     let recarregouUmaVez = false;
     const aoTrocarController = () => {
       if (recarregouUmaVez) return;
@@ -60,6 +72,8 @@ export function AtualizarApp() {
         "controllerchange",
         aoTrocarController
       );
+      document.removeEventListener("visibilitychange", aoVoltarPraTela);
+      clearInterval(intervalo);
       void registro;
     };
   }, []);

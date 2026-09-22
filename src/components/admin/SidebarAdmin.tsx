@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   AlarmClock,
   ArrowLeft,
+  ClipboardList,
   History,
   Menu,
   ShieldCheck,
@@ -59,7 +60,17 @@ export function SidebarAdmin({
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
+      <div className="px-3 pb-3">
+        <Link
+          href="/"
+          className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold"
+          style={{ background: "var(--primary)", color: "#04201c" }}
+        >
+          <ClipboardList size={16} /> Fazer medição
+        </Link>
+      </div>
+
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3">
         {secoes.map((s) => {
           const Icon = s.icon;
           return (
@@ -101,11 +112,10 @@ export function SidebarAdmin({
     <>
       {/* Desktop: coluna fixa */}
       <aside
-        className="hidden shrink-0 md:flex md:w-64"
+        className="sticky top-0 hidden h-screen shrink-0 md:flex md:w-64"
         style={{
           borderRight: "1px solid var(--border)",
           background: "var(--surface)",
-          minHeight: "100vh",
         }}
       >
         {conteudo}
@@ -123,9 +133,10 @@ export function SidebarAdmin({
         </button>
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-[var(--text-dim)]"
+          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold"
+          style={{ background: "var(--primary)", color: "#04201c" }}
         >
-          <ArrowLeft size={14} /> Voltar
+          <ClipboardList size={14} /> Fazer medição
         </Link>
       </div>
 
