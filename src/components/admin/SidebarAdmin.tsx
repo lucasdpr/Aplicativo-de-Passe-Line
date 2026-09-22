@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   AlarmClock,
   ArrowLeft,
@@ -14,9 +15,10 @@ import {
   X,
   Eye,
 } from "lucide-react";
+import { listarTecnicos } from "@/lib/auth";
 
-export interface SecaoNav {
-  id: string;
+interface ItemNav {
+  href: string;
   label: string;
   icon: typeof Users;
   contador?: number;
@@ -25,18 +27,26 @@ export interface SecaoNav {
 export function SidebarAdmin({
   ehAdmin,
   nomeTecnico,
-  secoes,
 }: {
   ehAdmin: boolean;
   nomeTecnico: string;
-  secoes: SecaoNav[];
 }) {
+  const pathname = usePathname();
   const [abertoMobile, setAbertoMobile] = useState(false);
+  const [pendentes, setPendentes] = useState(0);
 
-  function irPara(id: string) {
-    setAbertoMobile(false);
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
+  useEffect(() => {
+    listarTecnicos().then((tecnicos) => {
+      setPendentes(tecnicos.filter((t) => !t.aprovado).length);
+    });
+  }, []);
+
+  const secoes: ItemNav[] = [
+    { href: "/admin", label: "Prazos de medição", icon: AlarmClock },
+    { href: "/admin/analise", label: "Análise e variação", icon: LineChart },
+    { href: "/admin/tecnicos", label: "Técnicos", icon: Users, contador: pendentes },
+    { href: "/admin/historico", label: "Histórico completo", icon: History },
+  ];
 
   const conteudo = (
     <div className="flex h-full flex-col">
@@ -74,19 +84,25 @@ export function SidebarAdmin({
       <nav className="flex-1 space-y-1 overflow-y-auto px-3">
         {secoes.map((s) => {
           const Icon = s.icon;
+          const ativo = pathname === s.href;
           return (
-            <button
-              key={s.id}
-              onClick={() => irPara(s.id)}
+            <Link
+              key={s.href}
+              href={s.href}
+              onClick={() => setAbertoMobile(false)}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition hover:bg-[var(--surface-raised)]"
-              style={{ color: "var(--text-dim)" }}
+              style={
+                ativo
+                  ? { background: "var(--primary-soft)", color: "var(--primary-strong)" }
+                  : { color: "var(--text-dim)" }
+              }
             >
               <Icon size={17} className="shrink-0" />
               <span className="flex-1 truncate">{s.label}</span>
               {!!s.contador && (
                 <span className="badge badge-warning shrink-0">{s.contador}</span>
               )}
-            </button>
+            </Link>
           );
         })}
       </nav>
@@ -166,8 +182,3 @@ export function SidebarAdmin({
     </>
   );
 }
-
-export const ICONE_PRAZOS = AlarmClock;
-export const ICONE_TECNICOS = Users;
-export const ICONE_HISTORICO = History;
-export const ICONE_ANALISE = LineChart;
