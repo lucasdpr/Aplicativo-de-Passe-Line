@@ -16,8 +16,9 @@ import {
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
-import { SidebarAdmin, ICONE_PRAZOS, ICONE_TECNICOS, ICONE_HISTORICO } from "@/components/admin/SidebarAdmin";
+import { SidebarAdmin, ICONE_PRAZOS, ICONE_TECNICOS, ICONE_HISTORICO, ICONE_ANALISE } from "@/components/admin/SidebarAdmin";
 import { PainelPrazos } from "@/components/admin/PainelPrazos";
+import { PainelAnalise } from "@/components/admin/PainelAnalise";
 import {
   useAuthStore,
   resetarPin,
@@ -206,6 +207,7 @@ export default function AdminPage() {
           nomeTecnico={tecnico?.nome ?? ""}
           secoes={[
             { id: "prazos", label: "Prazos de medição", icon: ICONE_PRAZOS },
+            { id: "analise", label: "Análise e variação", icon: ICONE_ANALISE },
             {
               id: "tecnicos",
               label: "Técnicos",
@@ -220,6 +222,8 @@ export default function AdminPage() {
           <StatusBar />
           <main className="mx-auto w-full max-w-4xl flex-1 space-y-8 p-4 md:p-6">
         <PainelPrazos />
+
+        <PainelAnalise />
 
         {ehAdmin && (
           <div className="surface flex items-center gap-3 p-4">

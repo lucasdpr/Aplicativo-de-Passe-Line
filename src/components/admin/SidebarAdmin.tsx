@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ClipboardList,
   History,
+  LineChart,
   Menu,
   ShieldCheck,
   Users,
@@ -169,3 +170,4 @@ export function SidebarAdmin({
 export const ICONE_PRAZOS = AlarmClock;
 export const ICONE_TECNICOS = Users;
 export const ICONE_HISTORICO = History;
+export const ICONE_ANALISE = LineChart;

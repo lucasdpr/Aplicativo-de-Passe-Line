@@ -2,9 +2,7 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Ruler,
   MoveHorizontal,
   GitCompareArrows,
@@ -19,6 +17,7 @@ import {
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
+import { AppSidebar } from "@/components/AppSidebar";
 import { CalendarioMes } from "@/components/CalendarioMes";
 import { db } from "@/lib/db/dexie";
 import { puxarAtualizacoes, sincronizarPendentes, excluirSessao } from "@/lib/db/sync";
@@ -130,14 +129,11 @@ export default function HistoricoPage() {
 
   return (
     <AuthGuard>
-      <StatusBar />
-      <main className="mx-auto w-full max-w-2xl flex-1 p-4">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-[var(--text-dim)] hover:text-[var(--text)]"
-        >
-          <ArrowLeft size={14} /> Voltar
-        </Link>
+      <div className="flex min-h-screen flex-col md:flex-row">
+        <AppSidebar papel={tecnico?.papel} />
+        <div className="min-w-0 flex-1">
+          <StatusBar />
+          <main className="mx-auto w-full max-w-2xl flex-1 p-4">
         <div className="mb-4 mt-3 flex items-center justify-between gap-2">
           <h1 className="font-display text-xl font-bold tracking-tight">
             Histórico de medições
@@ -229,7 +225,9 @@ export default function HistoricoPage() {
             </div>
           ))}
         </div>
-      </main>
+          </main>
+        </div>
+      </div>
     </AuthGuard>
   );
 }
