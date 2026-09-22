@@ -48,7 +48,17 @@ function fmt(v: number | null | undefined) {
 }
 
 function fmtTexto(v: string | null | undefined) {
-  return v ?? "";
+  return sanitizarTexto(v ?? "");
+}
+
+/**
+ * A fonte padrão do PDF (WinAnsi) só desenha caracteres Latin-1. Texto vindo
+ * do banco (ex.: nomes copiados de planilhas antigas com encoding quebrado)
+ * pode ter caracteres fora disso, o que derruba a geração inteira do PDF.
+ * Troca qualquer caractere não suportado por "?" em vez de falhar.
+ */
+function sanitizarTexto(v: string): string {
+  return v.replace(/[^\x00-\xFF]/g, "?");
 }
 
 interface Ctx {
@@ -118,7 +128,7 @@ function cabecalho(ctx: Ctx, sessao: SessaoMedicao) {
     ["DATA", new Date(sessao.data + "T00:00:00").toLocaleDateString("pt-BR")],
     [
       "RESPONSÁVEL / MATR.",
-      `${sessao.tecnicoNome} / ${sessao.tecnicoMatricula}`,
+      sanitizarTexto(`${sessao.tecnicoNome} / ${sessao.tecnicoMatricula}`),
     ],
   ];
   const larguras = [90, 70, 100, 300];
@@ -197,7 +207,7 @@ function rodape(ctx: Ctx, sessao: SessaoMedicao, pagina: number) {
       font: bold,
       color: COR_TEXTO_SUAVE,
     });
-    page.drawText(sessao.observacao, {
+    page.drawText(sanitizarTexto(sessao.observacao), {
       x: MARGIN,
       y: yAssinaturas + 16,
       size: 8.5,
@@ -214,7 +224,7 @@ function rodape(ctx: Ctx, sessao: SessaoMedicao, pagina: number) {
     yAssinaturas,
     largura,
     "INSPECIONADO POR",
-    sessao.inspecionadoPor ?? ""
+    sanitizarTexto(sessao.inspecionadoPor ?? "")
   );
   linhaAssinatura(
     page,
@@ -224,7 +234,7 @@ function rodape(ctx: Ctx, sessao: SessaoMedicao, pagina: number) {
     yAssinaturas,
     largura,
     "LIBERADO POR",
-    sessao.liberadoPor ?? ""
+    sanitizarTexto(sessao.liberadoPor ?? "")
   );
 
   const geradoEm = new Date().toLocaleString("pt-BR");
