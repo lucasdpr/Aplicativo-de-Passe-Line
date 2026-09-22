@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [modo, setModo] = useState<"entrar" | "cadastrar">("entrar");
   const [nome, setNome] = useState("");
   const [matricula, setMatricula] = useState("");
-  const [funcao, setFuncao] = useState("Técnico de Mecânica");
+  const [funcao, setFuncao] = useState("");
   const [pin, setPin] = useState("");
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
@@ -163,6 +163,7 @@ export default function LoginPage() {
                 <Campo label="Função">
                   <input
                     required
+                    placeholder="Ex.: Técnico de Mecânica, Engenheiro, Gerente..."
                     value={funcao}
                     onChange={(e) => setFuncao(e.target.value)}
                     className="input"
