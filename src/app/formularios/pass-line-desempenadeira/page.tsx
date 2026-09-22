@@ -318,7 +318,7 @@ function PassLineDesempenadeiraForm() {
 
 export default function PassLineDesempenadeiraPage() {
   return (
-    <AuthGuard>
+    <AuthGuard bloquearVisualizador>
       <StatusBar />
       <Suspense fallback={null}>
         <PassLineDesempenadeiraForm />

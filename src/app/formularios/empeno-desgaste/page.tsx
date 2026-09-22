@@ -313,7 +313,7 @@ function EmpenoDesgasteForm() {
 
 export default function EmpenoDesgastePage() {
   return (
-    <AuthGuard>
+    <AuthGuard bloquearVisualizador>
       <StatusBar />
       <Suspense fallback={null}>
         <EmpenoDesgasteForm />

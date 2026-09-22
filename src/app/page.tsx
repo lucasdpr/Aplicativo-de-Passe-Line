@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Ruler, MoveHorizontal, Layers, GitCompareArrows } from "lucide-react";
+import { ArrowRight, Eye, History, Ruler, MoveHorizontal, Layers, GitCompareArrows } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -53,6 +53,7 @@ const FICHAS = [
 
 export default function Home() {
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
+  const ehVisualizador = tecnico?.papel === "VISUALIZADOR";
 
   return (
     <AuthGuard>
@@ -60,19 +61,60 @@ export default function Home() {
         <AppSidebar papel={tecnico?.papel} />
         <div className="min-w-0 flex-1">
           <StatusBar />
-          <LembretePrazos />
+          {!ehVisualizador && <LembretePrazos />}
           <main className="mx-auto w-full max-w-2xl flex-1 p-4">
             <div className="mb-7 mt-2 border-b pb-5" style={{ borderColor: "var(--border)" }}>
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-[var(--text-faint)]">
                 Olá, {tecnico?.nome?.split(" ")[0] ?? "técnico"}
               </p>
               <h1 className="font-display mt-1 text-[1.7rem] font-bold leading-tight tracking-tight">
-                Selecione a ficha
-                <br />
-                de medição
+                {ehVisualizador ? (
+                  <>
+                    Acesso de
+                    <br />
+                    visualização
+                  </>
+                ) : (
+                  <>
+                    Selecione a ficha
+                    <br />
+                    de medição
+                  </>
+                )}
               </h1>
             </div>
 
+            {ehVisualizador && (
+              <div className="grid gap-3">
+                <Link
+                  href="/historico"
+                  className="group surface flex items-center gap-4 p-4 transition hover:border-[var(--border-strong)]"
+                >
+                  <div
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+                    style={{ background: "var(--primary-soft)" }}
+                  >
+                    <History size={20} style={{ color: "var(--primary-strong)" }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium">Histórico de medições</div>
+                    <div className="text-sm text-[var(--text-dim)]">
+                      Acompanhar o que já foi registrado
+                    </div>
+                  </div>
+                  <ArrowRight size={18} className="shrink-0 text-[var(--text-faint)]" />
+                </Link>
+                <div className="surface flex items-start gap-3 p-4 text-sm text-[var(--text-dim)]">
+                  <Eye size={16} className="mt-0.5 shrink-0" style={{ color: "var(--text-faint)" }} />
+                  <span>
+                    Seu acesso é só de acompanhamento — quem faz e edita medições são os
+                    técnicos. Use a barra lateral pra ver prazos e o painel completo.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {!ehVisualizador && (
             <div className="grid gap-3">
               {FICHAS.map((f) => {
                 const Icon = f.icon;
@@ -120,6 +162,7 @@ export default function Home() {
                 );
               })}
             </div>
+            )}
           </main>
         </div>
       </div>
