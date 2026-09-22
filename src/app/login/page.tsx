@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { KeyRound, User as UserIcon } from "lucide-react";
+import { KeyRound, User as UserIcon, HardHat, Eye, ArrowLeft } from "lucide-react";
 import {
   autenticarPorPin,
   cadastrarTecnico,
@@ -17,6 +17,7 @@ export default function LoginPage() {
   const router = useRouter();
   const login = useAuthStore((s) => s.login);
   const [modo, setModo] = useState<"entrar" | "cadastrar">("entrar");
+  const [tipoAcesso, setTipoAcesso] = useState<"tecnico" | "visitante" | null>(null);
   const [nome, setNome] = useState("");
   const [matricula, setMatricula] = useState("");
   const [funcao, setFuncao] = useState("");
@@ -80,6 +81,11 @@ export default function LoginPage() {
     }
   }
 
+  function escolherTipoAcesso(tipo: "tecnico" | "visitante") {
+    setTipoAcesso(tipo);
+    setFuncao(tipo === "visitante" ? "Visitante (Engenheiro/Gerente)" : "");
+  }
+
   return (
     <main className="relative flex flex-1 items-center justify-center overflow-hidden p-4">
       <div
@@ -127,7 +133,11 @@ export default function LoginPage() {
                   ? { background: "var(--primary)", color: "#04201c" }
                   : { color: "var(--text-dim)" }
               }
-              onClick={() => setModo("entrar")}
+              onClick={() => {
+                setModo("entrar");
+                setErro("");
+                setAviso("");
+              }}
               type="button"
             >
               Entrar
@@ -139,16 +149,74 @@ export default function LoginPage() {
                   ? { background: "var(--primary)", color: "#04201c" }
                   : { color: "var(--text-dim)" }
               }
-              onClick={() => setModo("cadastrar")}
+              onClick={() => {
+                setModo("cadastrar");
+                setTipoAcesso(null);
+                setErro("");
+                setAviso("");
+              }}
               type="button"
             >
               Cadastrar
             </button>
           </div>
 
+          {modo === "cadastrar" && !tipoAcesso && (
+            <div className="space-y-3">
+              <p className="text-sm text-[var(--text-dim)]">Você é...</p>
+              <button
+                type="button"
+                onClick={() => escolherTipoAcesso("tecnico")}
+                className="surface flex w-full items-center gap-3 p-4 text-left transition hover:border-[var(--primary-strong)]"
+              >
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                  style={{ background: "var(--primary-soft)" }}
+                >
+                  <HardHat size={18} style={{ color: "var(--primary-strong)" }} />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-medium">Técnico</div>
+                  <div className="text-xs text-[var(--text-dim)]">
+                    Faz as medições em campo
+                  </div>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => escolherTipoAcesso("visitante")}
+                className="surface flex w-full items-center gap-3 p-4 text-left transition hover:border-[var(--primary-strong)]"
+              >
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                  style={{ background: "var(--primary-soft)" }}
+                >
+                  <Eye size={18} style={{ color: "var(--primary-strong)" }} />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-medium">Visitante</div>
+                  <div className="text-xs text-[var(--text-dim)]">
+                    Engenheiro, gerente — só acompanha
+                  </div>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {modo === "cadastrar" && tipoAcesso && (
+            <button
+              type="button"
+              onClick={() => setTipoAcesso(null)}
+              className="mb-4 flex items-center gap-1.5 text-xs text-[var(--text-dim)] hover:text-[var(--text)]"
+            >
+              <ArrowLeft size={12} />
+              {tipoAcesso === "tecnico" ? "Técnico" : "Visitante"} · trocar
+            </button>
+          )}
+
           <form
             onSubmit={modo === "entrar" ? handleEntrar : handleCadastrar}
-            className="space-y-4"
+            className={`space-y-4 ${modo === "cadastrar" && !tipoAcesso ? "hidden" : ""}`}
           >
             {modo === "cadastrar" && (
               <>
