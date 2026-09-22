@@ -114,7 +114,8 @@ export async function cadastrarTecnico(
   nome: string,
   matricula: string,
   funcao: string,
-  pin: string
+  pin: string,
+  tipoAcesso: "tecnico" | "visitante" = "tecnico"
 ) {
   if (!supabase || !navigator.onLine) throw new SemConexaoError();
 
@@ -136,7 +137,7 @@ export async function cadastrarTecnico(
     matricula: matriculaPadronizada,
     funcao,
     pin: pinHash,
-    papel: ehAdmin ? "ADMIN" : "TECNICO",
+    papel: ehAdmin ? "ADMIN" : tipoAcesso === "visitante" ? "VISUALIZADOR" : "TECNICO",
     // Matrículas da lista de admins pulam a fila de aprovação; as demais
     // ficam pendentes até um admin confirmar no painel.
     aprovado: ehAdmin,

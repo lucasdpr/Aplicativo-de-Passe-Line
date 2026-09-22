@@ -69,7 +69,13 @@ export default function LoginPage() {
     }
     setCarregando(true);
     try {
-      const tecnico = await cadastrarTecnico(nome, matricula, funcao, pin);
+      const tecnico = await cadastrarTecnico(
+        nome,
+        matricula,
+        funcao,
+        pin,
+        tipoAcesso ?? "tecnico"
+      );
       if (!tecnico.aprovado) {
         setModo("entrar");
         setTecnicoPendente({ id: tecnico.id, nome: tecnico.nome });
