@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { enviarNotificacaoPush } from "@/lib/serverPush";
 
 export const runtime = "nodejs";
 
@@ -59,6 +60,19 @@ export async function POST(req: NextRequest) {
   });
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
+  }
+
+  if (!ehAdmin) {
+    // Cadastro fica pendente de aprovação — avisa os admins agora, senão
+    // ninguém fica sabendo que alguém está esperando liberação.
+    enviarNotificacaoPush({
+      titulo: "Novo cadastro pendente",
+      corpo: `${nomePadronizado} (matr. ${matriculaPadronizada}) pediu acesso como ${
+        tipoAcesso === "visitante" ? "visitante" : "técnico"
+      }. Precisa da sua aprovação.`,
+      urlDestino: "/admin/tecnicos",
+      paraAdmins: true,
+    }).catch(() => {});
   }
 
   return NextResponse.json({
