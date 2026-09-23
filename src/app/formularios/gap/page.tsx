@@ -22,11 +22,12 @@ import { agruparCampos, clamparNumero, estiloColuna } from "@/lib/tabelaCampos";
 const TOLERANCIA_PADRAO = 0.5;
 
 /**
- * GAP nominal por Nº CAD, conforme a ficha de papel (MCC's #2 e #3) — o
- * valor vai diminuindo em faixas de Nº CAD, não é o mesmo pra todo mundo.
- * Faixas confirmadas na ficha (Nº CAD → GAP nominal, mm):
- * 43–45: 260,5–260,0 · 46–50: 259,5 · 51–53: 259,0 · 54–57: 258,5 ·
- * 58–61: 258,0 · 62–66: 257,5 · 67–70: 257,0 · 71–74: 256,5 · 75+: 256,0
+ * GAP nominal por Nº CAD, conforme o histórico real de medições (MCC's #2 e
+ * #3) — o valor vai diminuindo em faixas de Nº CAD, não é o mesmo pra todo
+ * mundo. Faixas confirmadas cruzando com sessões históricas já registradas
+ * (Nº CAD → GAP nominal, mm):
+ * 43: 260,5 · 44–45: 260,0 · 46–50: 259,5 · 51–54: 259,0 · 55–58: 258,5 ·
+ * 59–62: 258,0 · 63–66: 257,5 · 67–70: 257,0 · 71–74: 256,5 · 75+: 256,0
  */
 const GAP_NOMINAL_POR_N_CAD: Record<number, number> = {
   43: 260.5,
@@ -40,15 +41,15 @@ const GAP_NOMINAL_POR_N_CAD: Record<number, number> = {
   51: 259.0,
   52: 259.0,
   53: 259.0,
-  54: 258.5,
+  54: 259.0,
   55: 258.5,
   56: 258.5,
   57: 258.5,
-  58: 258.0,
+  58: 258.5,
   59: 258.0,
   60: 258.0,
   61: 258.0,
-  62: 257.5,
+  62: 258.0,
   63: 257.5,
   64: 257.5,
   65: 257.5,
