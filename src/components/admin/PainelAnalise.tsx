@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, LineChart, TrendingDown, TrendingUp } from "lucide-react";
+import { AlertTriangle, Clock, LineChart, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart as ReLineChart,
   Line,
+  ReferenceLine,
   BarChart,
   Bar,
   Cell,
@@ -41,6 +42,30 @@ function corDaVariacao(combo: AnaliseCombo): string {
   const piorando = estaPiorando(combo);
   if (piorando === null) return "var(--text-dim)";
   return piorando ? "#fca5a5" : "var(--success)";
+}
+
+function textoTendencia(combo: AnaliseCombo): string {
+  if (combo.tendencia === "estavel") return "Estável — sem variação relevante entre medições";
+  if (combo.tendencia === "melhorando") return "Melhorando a cada medição";
+  if (combo.tendencia === "piorando") return "Piorando a cada medição";
+  return "Ainda sem medições suficientes pra saber a tendência";
+}
+
+function IconeTendencia({ combo, size = 12 }: { combo: AnaliseCombo; size?: number }) {
+  if (combo.tendencia === "piorando") return <TrendingUp size={size} />;
+  if (combo.tendencia === "melhorando") return <TrendingDown size={size} />;
+  if (combo.tendencia === "estavel") return <Minus size={size} />;
+  return null;
+}
+
+function textoPrevisao(combo: AnaliseCombo): string | null {
+  if (combo.medicoesAteForaTolerancia === null) return null;
+  const medicoes = combo.medicoesAteForaTolerancia;
+  const plural = medicoes === 1 ? "medição" : "medições";
+  if (combo.diasAteForaTolerancia !== null) {
+    return `Em cerca de ${medicoes} ${plural} (~${combo.diasAteForaTolerancia} dias) deve sair da tolerância, se o ritmo atual continuar`;
+  }
+  return `Em cerca de ${medicoes} ${plural} deve sair da tolerância, se o ritmo atual continuar`;
 }
 
 function StatCard({
@@ -176,6 +201,16 @@ export function PainelAnalise() {
                     <div className="text-xs text-[var(--text-faint)]">
                       {comboAtivo.descricaoValor} · {comboAtivo.totalSessoes} medições · última em{" "}
                       {comboAtivo.ultimaMedicaoEm && formatarDataLonga(comboAtivo.ultimaMedicaoEm)}
+                      {comboAtivo.toleranciaMm !== null && (
+                        <> · tolerância ±{comboAtivo.toleranciaMm.toFixed(3)}mm</>
+                      )}
+                    </div>
+                    <div
+                      className="mt-1 flex items-center gap-1 text-xs"
+                      style={{ color: corDaVariacao(comboAtivo) }}
+                    >
+                      <IconeTendencia combo={comboAtivo} />
+                      {textoTendencia(comboAtivo)}
                     </div>
                   </div>
                   {comboAtivo.variacaoAbsoluta !== null && (
@@ -235,11 +270,24 @@ export function PainelAnalise() {
                         strokeWidth={2}
                         dot={{ r: 3, fill: "var(--primary-strong)" }}
                       />
+                      {comboAtivo.toleranciaMm !== null && (
+                        <ReferenceLine
+                          y={comboAtivo.toleranciaMm}
+                          stroke="#fca5a5"
+                          strokeDasharray="4 4"
+                          label={{
+                            value: "limite da tolerância",
+                            position: "insideTopRight",
+                            fill: "#fca5a5",
+                            fontSize: 10,
+                          }}
+                        />
+                      )}
                     </ReLineChart>
                   </ResponsiveContainer>
                 </div>
 
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {comboAtivo.foraToleranciaPct !== null && (
                     <div
                       className="flex flex-col justify-center rounded-lg px-3 py-2 text-xs"
@@ -277,9 +325,23 @@ export function PainelAnalise() {
                     >
                       <span className="font-semibold text-[var(--text)]">
                         {comboAtivo.variacaoPorMedicao > 0 ? "+" : ""}
-                        {comboAtivo.variacaoPorMedicao.toFixed(4)}mm
+                        {comboAtivo.variacaoPorMedicao.toFixed(4)}mm por medição
                       </span>
-                      <span>ritmo médio de variação por medição</span>
+                      <span>
+                        ritmo médio de variação — quanto esse valor muda, em média, a cada nova medição
+                      </span>
+                    </div>
+                  )}
+
+                  {textoPrevisao(comboAtivo) && (
+                    <div
+                      className="flex flex-col justify-center rounded-lg px-3 py-2 text-xs"
+                      style={{ background: "var(--warning-soft, var(--surface-raised))", color: "var(--warning)" }}
+                    >
+                      <span className="flex items-center gap-1 font-semibold text-[var(--text)]">
+                        <Clock size={12} /> Estimativa
+                      </span>
+                      <span>{textoPrevisao(comboAtivo)}</span>
                     </div>
                   )}
                 </div>
@@ -344,8 +406,10 @@ export function PainelAnalise() {
                   <th className="p-3 font-medium text-[var(--text-dim)]">Medições</th>
                   <th className="p-3 font-medium text-[var(--text-dim)]">Última</th>
                   <th className="p-3 font-medium text-[var(--text-dim)]">Variação</th>
+                  <th className="p-3 font-medium text-[var(--text-dim)]">Tendência</th>
                   <th className="p-3 font-medium text-[var(--text-dim)]">Pior ponto</th>
                   <th className="p-3 font-medium text-[var(--text-dim)]">Fora da tolerância</th>
+                  <th className="p-3 font-medium text-[var(--text-dim)]">Previsão</th>
                 </tr>
               </thead>
               <tbody>
@@ -375,11 +439,30 @@ export function PainelAnalise() {
                           ? "—"
                           : `${c.variacaoAbsoluta > 0 ? "+" : ""}${c.variacaoAbsoluta.toFixed(3)}mm`}
                       </td>
+                      <td className="p-3" style={{ color: corDaVariacao(c) }}>
+                        <div className="flex items-center gap-1">
+                          <IconeTendencia combo={c} size={11} />
+                          {c.tendencia === "piorando"
+                            ? "Piorando"
+                            : c.tendencia === "melhorando"
+                              ? "Melhorando"
+                              : c.tendencia === "estavel"
+                                ? "Estável"
+                                : "—"}
+                        </div>
+                      </td>
                       <td className="p-3 text-[var(--text-dim)]">
                         {c.piorPonto ? `Nº ${c.piorPonto.nCad} (${c.piorPonto.valor.toFixed(3)}mm)` : "—"}
                       </td>
                       <td className="p-3 text-[var(--text-dim)]">
                         {c.foraToleranciaPct === null ? "—" : `${c.foraToleranciaPct.toFixed(1)}%`}
+                      </td>
+                      <td className="p-3 text-[var(--text-dim)]">
+                        {c.medicoesAteForaTolerancia === null
+                          ? "—"
+                          : `~${c.medicoesAteForaTolerancia} medições${
+                              c.diasAteForaTolerancia !== null ? ` (${c.diasAteForaTolerancia}d)` : ""
+                            }`}
                       </td>
                     </tr>
                   );

@@ -19,15 +19,64 @@ import { useAuthStore } from "@/lib/auth";
 import { N_CAD_RANGE, type LinhaGap, type SessaoMedicao } from "@/types";
 import { agruparCampos, clamparNumero, estiloColuna } from "@/lib/tabelaCampos";
 
-const GAP_NOMINAL_PADRAO = 258.0;
 const TOLERANCIA_PADRAO = 0.5;
+
+/**
+ * GAP nominal por Nº CAD, conforme a ficha de papel (MCC's #2 e #3) — o
+ * valor vai diminuindo em faixas de Nº CAD, não é o mesmo pra todo mundo.
+ * Faixas confirmadas na ficha (Nº CAD → GAP nominal, mm):
+ * 43–45: 260,5–260,0 · 46–50: 259,5 · 51–53: 259,0 · 54–57: 258,5 ·
+ * 58–61: 258,0 · 62–66: 257,5 · 67–70: 257,0 · 71–74: 256,5 · 75+: 256,0
+ */
+const GAP_NOMINAL_POR_N_CAD: Record<number, number> = {
+  43: 260.5,
+  44: 260.0,
+  45: 260.0,
+  46: 259.5,
+  47: 259.5,
+  48: 259.5,
+  49: 259.5,
+  50: 259.5,
+  51: 259.0,
+  52: 259.0,
+  53: 259.0,
+  54: 258.5,
+  55: 258.5,
+  56: 258.5,
+  57: 258.5,
+  58: 258.0,
+  59: 258.0,
+  60: 258.0,
+  61: 258.0,
+  62: 257.5,
+  63: 257.5,
+  64: 257.5,
+  65: 257.5,
+  66: 257.5,
+  67: 257.0,
+  68: 257.0,
+  69: 257.0,
+  70: 257.0,
+  71: 256.5,
+  72: 256.5,
+  73: 256.5,
+  74: 256.5,
+  75: 256.0,
+};
+
+function gapNominalPadrao(nCad: number): number {
+  // A ficha impressa mostrada vai até o Nº CAD 75 — pros CADs seguintes
+  // (76–79), usa o último valor confirmado até a ficha completa ser
+  // conferida (é só um ponto de partida, dá pra ajustar linha a linha).
+  return GAP_NOMINAL_POR_N_CAD[nCad] ?? 256.0;
+}
 
 function linhasIniciais(): LinhaGap[] {
   const linhas: LinhaGap[] = [];
   for (let n = N_CAD_RANGE.min; n <= N_CAD_RANGE.max; n++) {
     linhas.push({
       nCad: n,
-      gapNominal: GAP_NOMINAL_PADRAO,
+      gapNominal: gapNominalPadrao(n),
       toleranciaMm: TOLERANCIA_PADRAO,
     });
   }
