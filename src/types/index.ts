@@ -114,7 +114,11 @@ export interface LeituraSegmento {
 export const TOLERANCIAS = {
   PASS_LINE_DESEMPENADEIRA: 0.5,
   PASS_LINE_SEGMENTOS: 1.0,
+  /** MCC4 tem tolerância própria pro Pass-Line dos Segmentos: ±0,5mm. */
+  PASS_LINE_SEGMENTOS_MCC4: 0.5,
 } as const;
 
 export const SEGMENTOS_PADRAO = ["0", "1", "2", "3", "4", "5", "6", "D"];
+/** A MCC4 não usa "0" nem "D" — os segmentos vão de 1 a 17. */
+export const SEGMENTOS_MCC4 = Array.from({ length: 17 }, (_, i) => String(i + 1));
 export const N_CAD_RANGE = { min: 43, max: 79 };
