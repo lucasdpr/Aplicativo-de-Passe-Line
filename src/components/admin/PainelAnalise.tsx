@@ -1,7 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Clock, LineChart, Minus, TrendingDown, TrendingUp } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Download,
+  LineChart,
+  Minus,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart as ReLineChart,
@@ -16,7 +27,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { supabase } from "@/lib/supabase";
-import { buscarAnaliseCombos, type AnaliseCombo } from "@/lib/analise";
+import { buscarAnaliseCombos, type AnaliseCombo, type PontoSerie } from "@/lib/analise";
 
 function formatarData(dataIso: string): string {
   return new Date(`${dataIso}T00:00:00`).toLocaleDateString("pt-BR", {
@@ -58,6 +69,36 @@ function IconeTendencia({ combo, size = 12 }: { combo: AnaliseCombo; size?: numb
   return null;
 }
 
+/**
+ * Procura na série do combo o ponto mais próximo de "1 ano antes da última
+ * medição" (dentro de uma janela de 30 dias) pra comparar com o valor
+ * atual. Com o histórico ainda começando em 2026, isso só encontra algo
+ * quando já existir mais de ~1 ano de dados acumulados.
+ */
+function comparacaoAnoAnterior(
+  combo: AnaliseCombo
+): { pontoAntigo: PontoSerie; diasEntre: number } | null {
+  if (!combo.ultimaMedicaoEm || combo.serie.length < 2) return null;
+  const ultimaData = new Date(`${combo.ultimaMedicaoEm}T00:00:00Z`).getTime();
+  const alvo = ultimaData - 365 * 86_400_000;
+  const JANELA_DIAS = 30;
+  let melhor: PontoSerie | null = null;
+  let melhorDistancia = Infinity;
+  for (const ponto of combo.serie) {
+    const data = new Date(`${ponto.data}T00:00:00Z`).getTime();
+    const distancia = Math.abs(data - alvo);
+    if (distancia < melhorDistancia) {
+      melhorDistancia = distancia;
+      melhor = ponto;
+    }
+  }
+  if (!melhor || melhorDistancia > JANELA_DIAS * 86_400_000) return null;
+  const diasEntre = Math.round(
+    (ultimaData - new Date(`${melhor.data}T00:00:00Z`).getTime()) / 86_400_000
+  );
+  return { pontoAntigo: melhor, diasEntre };
+}
+
 function textoPrevisao(combo: AnaliseCombo): string | null {
   if (combo.medicoesAteForaTolerancia === null) return null;
   const medicoes = combo.medicoesAteForaTolerancia;
@@ -90,6 +131,7 @@ function StatCard({
 export function PainelAnalise() {
   const [combos, setCombos] = useState<AnaliseCombo[] | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
+  const [detalheNCadAberto, setDetalheNCadAberto] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
@@ -132,12 +174,46 @@ export function PainelAnalise() {
 
   const foraAgoraCount = comDados.filter((c) => c.foraToleranciaAgora).length;
   const piorandoCount = comDados.filter((c) => estaPiorando(c) === true).length;
+  const atrasados = useMemo(
+    () => comDados.filter((c) => c.diasAtraso !== null && c.diasAtraso > 0),
+    [comDados]
+  );
+  const comparacao = comboAtivo ? comparacaoAnoAnterior(comboAtivo) : null;
 
   return (
-    <section id="analise" className="scroll-mt-4">
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--text-dim)]">
-        <LineChart size={15} /> Análise e variação por equipamento
-      </h2>
+    <section id="analise" className="scroll-mt-4 print:text-black">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-dim)]">
+          <LineChart size={15} /> Análise e variação por equipamento
+        </h2>
+        {comDados.length > 0 && (
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium print:hidden"
+            style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
+          >
+            <Download size={13} /> Exportar / Imprimir
+          </button>
+        )}
+      </div>
+
+      {atrasados.length > 0 && (
+        <div
+          className="mb-3 flex items-start gap-2 rounded-lg px-3 py-2.5 text-xs"
+          style={{ background: "var(--danger-soft)", color: "#fca5a5" }}
+        >
+          <CalendarClock size={15} className="mt-0.5 shrink-0" />
+          <div>
+            <span className="font-semibold">
+              {atrasados.length} {atrasados.length === 1 ? "equipamento atrasado" : "equipamentos atrasados"}
+            </span>{" "}
+            pra próxima medição:{" "}
+            {atrasados
+              .map((c) => `${c.label} (${c.diasAtraso}d de atraso)`)
+              .join(" · ")}
+          </div>
+        </div>
+      )}
 
       {!combos && (
         <div className="surface p-6 text-center text-sm text-[var(--text-dim)]">
@@ -344,7 +420,87 @@ export function PainelAnalise() {
                       <span>{textoPrevisao(comboAtivo)}</span>
                     </div>
                   )}
+
+                  <div
+                    className="flex flex-col justify-center rounded-lg px-3 py-2 text-xs"
+                    style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
+                  >
+                    {comparacao ? (
+                      <>
+                        <span className="font-semibold text-[var(--text)]">
+                          {comparacao.pontoAntigo.valor.toFixed(3)}mm há {comparacao.diasEntre} dias
+                        </span>
+                        <span>
+                          comparado a {comboAtivo.ultimoValor?.toFixed(3)}mm agora — mesma época do ano
+                          passado ({formatarDataLonga(comparacao.pontoAntigo.data)})
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-semibold text-[var(--text)]">Ano anterior</span>
+                        <span>
+                          ainda não há medição de ~1 ano atrás pra comparar (o histórico começa em
+                          2026)
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </div>
+
+                {comboAtivo.detalhePorNCad.length > 0 && (
+                  <div className="mt-3">
+                    <button
+                      onClick={() => setDetalheNCadAberto((v) => !v)}
+                      className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium"
+                      style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
+                    >
+                      <span>Detalhe por Nº CAD ({comboAtivo.detalhePorNCad.length} posições)</span>
+                      {detalheNCadAberto ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    {detalheNCadAberto && (
+                      <div className="mt-2 max-h-64 overflow-y-auto rounded-lg" style={{ border: "1px solid var(--border)" }}>
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                              <th className="p-2 font-medium text-[var(--text-dim)]">Nº CAD</th>
+                              <th className="p-2 font-medium text-[var(--text-dim)]">Último valor</th>
+                              <th className="p-2 font-medium text-[var(--text-dim)]">Pior já visto</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {comboAtivo.detalhePorNCad
+                              .slice()
+                              .sort((a, b) =>
+                                comboAtivo.tipoFicha === "EMPENO_DESGASTE"
+                                  ? a.piorValor - b.piorValor
+                                  : b.piorValor - a.piorValor
+                              )
+                              .map((d) => {
+                                const critico =
+                                  comboAtivo.toleranciaMm !== null &&
+                                  comboAtivo.tipoFicha !== "EMPENO_DESGASTE" &&
+                                  Math.abs(d.ultimoValor) > comboAtivo.toleranciaMm;
+                                return (
+                                  <tr key={d.nCad} style={{ borderBottom: "1px solid var(--border)" }}>
+                                    <td className="p-2 font-medium">{d.nCad}</td>
+                                    <td
+                                      className="p-2"
+                                      style={{ color: critico ? "#fca5a5" : "var(--text-dim)" }}
+                                    >
+                                      {d.ultimoValor.toFixed(3)}mm
+                                    </td>
+                                    <td className="p-2 text-[var(--text-faint)]">
+                                      {d.piorValor.toFixed(3)}mm · {formatarData(d.piorData)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>

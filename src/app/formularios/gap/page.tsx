@@ -17,7 +17,13 @@ import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
 import { N_CAD_RANGE, type LinhaGap, type SessaoMedicao } from "@/types";
-import { agruparCampos, clamparNumero, estiloColuna } from "@/lib/tabelaCampos";
+import {
+  agruparCampos,
+  clamparNumero,
+  estiloColuna,
+  formatarValorDigitado,
+  paraValorDigitado,
+} from "@/lib/tabelaCampos";
 
 const TOLERANCIA_PADRAO = 0.5;
 
@@ -165,12 +171,11 @@ function GapForm() {
   }, [sessaoId]);
 
   function setValor(nCad: number, campo: keyof LinhaGap, valorTexto: string) {
-    let valor: string | number | undefined =
-      valorTexto === ""
+    let valor: string | number | undefined = CAMPOS_TEXTO.has(campo)
+      ? valorTexto === ""
         ? undefined
-        : CAMPOS_TEXTO.has(campo)
-          ? valorTexto
-          : Number(valorTexto);
+        : valorTexto
+      : paraValorDigitado(valorTexto);
     if (typeof valor === "number") {
       valor = clamparNumero(valor, 0, 999.99);
     }
@@ -342,13 +347,10 @@ function GapForm() {
                 </td>
                 <td>
                   <input
-                    type="number"
-                    step="0.1"
-                    min={0}
-                    max={99.99}
+                    type="text"
                     inputMode="decimal"
                     className="input-cell"
-                    value={l.toleranciaMm}
+                    value={formatarValorDigitado(l.toleranciaMm)}
                     onChange={(e) =>
                       setValor(l.nCad, "toleranciaMm", e.target.value)
                     }
@@ -369,14 +371,11 @@ function GapForm() {
                     return (
                       <td key={c.key} style={estiloColuna(g.indice, i === 0)}>
                         <input
-                          type={ehTexto ? "text" : "number"}
-                          step={ehTexto ? undefined : "0.1"}
-                          min={ehTexto ? undefined : 0}
-                          max={ehTexto ? undefined : 999.99}
+                          type="text"
                           inputMode={ehTexto ? "text" : "decimal"}
                           placeholder="—"
                           className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
-                          value={valor ?? ""}
+                          value={ehTexto ? (valor as string | undefined) ?? "" : formatarValorDigitado(valor as number | undefined)}
                           onChange={(e) =>
                             setValor(l.nCad, c.key, e.target.value)
                           }

@@ -38,6 +38,49 @@ export function clamparNumero(valor: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, valor));
 }
 
+/**
+ * Converte o texto bruto de um campo de medida (mm) pra número, tratando os
+ * últimos dígitos digitados como as casas decimais — assim o técnico digita
+ * só os números no teclado numérico do celular (ex.: "2604" com 1 casa vira
+ * "260,4") sem precisar procurar o ponto/vírgula. `casasDecimais` deve bater
+ * com a precisão real usada nessa ficha (1 casa pro GAP, 2 pras outras). Se
+ * o texto colado já tiver um separador, os dígitos ao redor dele são usados
+ * do mesmo jeito (colar "260.4" também vira 260,4).
+ */
+export function paraValorDigitado(
+  valorTexto: string,
+  casasDecimais: 1 | 2 = 1
+): number | undefined {
+  if (valorTexto.trim() === "") return undefined;
+  const negativo = valorTexto.trim().startsWith("-");
+  const digitos = valorTexto.replace(/[^0-9]/g, "");
+  if (digitos === "") {
+    // Só o sinal de "-" foi digitado ainda, sem nenhum dígito — "-0" guarda
+    // essa intenção (não dá pra representar isso só com "undefined", senão
+    // o próximo dígito digitado perderia o sinal).
+    return negativo ? -0 : undefined;
+  }
+  const numero = Number(digitos) / Math.pow(10, casasDecimais);
+  return negativo ? -numero : numero;
+}
+
+/**
+ * Formata o valor pra exibir no campo, sempre com o número de casas decimais
+ * combinado e sem zero à esquerda (".2" em vez de "0,2") — o zero à esquerda
+ * faria o próximo dígito digitado entrar na sequência errada em
+ * `paraValorDigitado`. `casasDecimais` precisa ser o mesmo usado lá.
+ */
+export function formatarValorDigitado(
+  valor: number | undefined,
+  casasDecimais: 1 | 2 = 1
+): string {
+  if (valor === undefined || Number.isNaN(valor)) return "";
+  const negativo = valor < 0 || Object.is(valor, -0);
+  const textoAbs = Math.abs(valor).toFixed(casasDecimais);
+  const semZeroInicial = textoAbs.startsWith("0.") ? textoAbs.slice(1) : textoAbs;
+  return (negativo ? "-" : "") + semZeroInicial;
+}
+
 /** Estilo pra faixa alternada + divisória entre grupos de colunas na tabela. */
 export function estiloColuna(indiceGrupo: number, primeiraDoGrupo: boolean) {
   return {

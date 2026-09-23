@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import type { PapelTecnico } from "@/types";
+import { BotaoNotificacoes } from "@/components/BotaoNotificacoes";
 
 interface ItemNav {
   href: string;
@@ -76,6 +77,10 @@ export function AppSidebar({ papel }: { papel?: PapelTecnico }) {
           );
         })}
       </nav>
+
+      <div className="p-3">
+        <BotaoNotificacoes />
+      </div>
     </div>
   );
 
