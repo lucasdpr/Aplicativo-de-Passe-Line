@@ -245,26 +245,46 @@ export function PainelAnalise() {
           </div>
 
           <div className="surface p-4">
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {comDados.map((c) => {
-                const chave = `${c.tipoFicha}|${c.maquina}|${c.veio}`;
-                const ativo = chave === selecionado;
+            <div className="mb-3 space-y-2">
+              {(
+                [
+                  ["PASS_LINE_DESEMPENADEIRA", "Pass-Line (Desempenadeira)"],
+                  ["PASS_LINE_SEGMENTOS", "Pass-Line dos Segmentos"],
+                  ["GAP", "GAP"],
+                  ["EMPENO_DESGASTE", "Empeno e Desgaste"],
+                ] as const
+              ).map(([tipo, rotulo]) => {
+                const linha = comDados.filter((c) => c.tipoFicha === tipo);
+                if (linha.length === 0) return null;
                 return (
-                  <button
-                    key={chave}
-                    onClick={() => setSelecionado(chave)}
-                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition"
-                    style={
-                      ativo
-                        ? { background: "var(--primary-soft)", color: "var(--primary-strong)" }
-                        : { background: "var(--surface-raised)", color: "var(--text-dim)" }
-                    }
-                  >
-                    {c.foraToleranciaAgora && (
-                      <AlertTriangle size={11} style={{ color: "#fca5a5" }} />
-                    )}
-                    {c.label}
-                  </button>
+                  <div key={tipo}>
+                    <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text-faint)]">
+                      {rotulo}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {linha.map((c) => {
+                        const chave = `${c.tipoFicha}|${c.maquina}|${c.veio}`;
+                        const ativo = chave === selecionado;
+                        return (
+                          <button
+                            key={chave}
+                            onClick={() => setSelecionado(chave)}
+                            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition"
+                            style={
+                              ativo
+                                ? { background: "var(--primary-soft)", color: "var(--primary-strong)" }
+                                : { background: "var(--surface-raised)", color: "var(--text-dim)" }
+                            }
+                          >
+                            {c.foraToleranciaAgora && (
+                              <AlertTriangle size={11} style={{ color: "#fca5a5" }} />
+                            )}
+                            {c.maquina} veio {c.veio}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>
