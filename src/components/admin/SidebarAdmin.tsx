@@ -16,6 +16,7 @@ import {
   Eye,
 } from "lucide-react";
 import { listarTecnicos } from "@/lib/auth";
+import { BotaoNotificacoes } from "@/components/BotaoNotificacoes";
 
 interface ItemNav {
   href: string;
@@ -113,6 +114,7 @@ export function SidebarAdmin({
       </nav>
 
       <div className="space-y-2 p-3">
+        <BotaoNotificacoes />
         <Link
           href="/"
           className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition hover:bg-[var(--surface-raised)]"
