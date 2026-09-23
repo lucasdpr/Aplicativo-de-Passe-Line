@@ -14,11 +14,22 @@ const FICHAS_COM_ANALISE: TipoFicha[] = [
   "EMPENO_DESGASTE",
 ];
 
+/**
+ * MCC4 tem GAP, mas a Análise ainda não sabe calcular tendência pro
+ * Pass-Line dos Segmentos (estrutura por segmento, não por Nº CAD) —
+ * só GAP entra aqui até isso ser construído.
+ */
+const FICHAS_COM_ANALISE_POR_MAQUINA: Record<Maquina, TipoFicha[]> = {
+  MCC2: FICHAS_COM_ANALISE,
+  MCC3: FICHAS_COM_ANALISE,
+  MCC4: ["GAP"],
+};
+
 function todosOsCombosAnalise(): Combo[] {
   const combos: Combo[] = [];
   for (const maquina of Object.keys(VEIOS_POR_MAQUINA) as Maquina[]) {
     for (const veio of VEIOS_POR_MAQUINA[maquina]) {
-      for (const tipoFicha of FICHAS_COM_ANALISE) {
+      for (const tipoFicha of FICHAS_COM_ANALISE_POR_MAQUINA[maquina]) {
         combos.push({ tipoFicha, maquina, veio });
       }
     }

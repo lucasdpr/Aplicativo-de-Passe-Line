@@ -19,22 +19,33 @@ import { useAuthStore } from "@/lib/auth";
 import { clamparNumero, formatarValorDigitado, paraValorDigitado } from "@/lib/tabelaCampos";
 import {
   SEGMENTOS_PADRAO,
+  SEGMENTOS_MCC4,
   TOLERANCIAS,
   type LadoSegmento,
   type LeituraSegmento,
+  type Maquina,
   type SessaoMedicao,
 } from "@/types";
 
-const TOLERANCIA = TOLERANCIAS.PASS_LINE_SEGMENTOS;
 const POSICOES_INICIAIS = 4;
 const LADOS: { key: LadoSegmento; label: string }[] = [
   { key: "ACIONADO", label: "Lado Acionado" },
   { key: "NAO_ACIONADO", label: "Lado Não Acionado" },
 ];
 
-function estadoInicial(): LeituraSegmento[] {
+// A MCC4 usa segmentos numerados 1–8 (não tem "0" nem "D"), com tolerância
+// própria — as demais (MCC2/MCC3) usam os segmentos padrão 0–6 e D.
+function segmentosDaMaquina(maquina: Maquina): string[] {
+  return maquina === "MCC4" ? SEGMENTOS_MCC4 : SEGMENTOS_PADRAO;
+}
+
+function toleranciaDaMaquina(maquina: Maquina): number {
+  return maquina === "MCC4" ? TOLERANCIAS.PASS_LINE_SEGMENTOS_MCC4 : TOLERANCIAS.PASS_LINE_SEGMENTOS;
+}
+
+function estadoInicial(maquina: Maquina): LeituraSegmento[] {
   const leituras: LeituraSegmento[] = [];
-  for (const segmento of SEGMENTOS_PADRAO) {
+  for (const segmento of segmentosDaMaquina(maquina)) {
     for (const { key: lado } of LADOS) {
       for (let posicao = 1; posicao <= POSICOES_INICIAIS; posicao++) {
         leituras.push({ segmento, lado, posicao });
@@ -44,9 +55,9 @@ function estadoInicial(): LeituraSegmento[] {
   return leituras;
 }
 
-function foraDaTolerancia(valor: number | undefined) {
+function foraDaTolerancia(valor: number | undefined, tolerancia: number) {
   if (valor === undefined || Number.isNaN(valor)) return false;
-  return Math.abs(valor) > TOLERANCIA;
+  return Math.abs(valor) > tolerancia;
 }
 
 function headerDeSessao(s: SessaoMedicao): SessaoHeaderValue {
@@ -70,7 +81,7 @@ function PassLineSegmentosForm() {
   const sessaoId = searchParams.get("sessaoId");
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
   const [header, setHeader] = useState<SessaoHeaderValue>(novaSessaoHeader());
-  const [leituras, setLeituras] = useState<LeituraSegmento[]>(estadoInicial());
+  const [leituras, setLeituras] = useState<LeituraSegmento[]>(estadoInicial(novaSessaoHeader().maquina));
   const [carregando, setCarregando] = useState(!!sessaoId);
   const [headerOriginal, setHeaderOriginal] =
     useState<SessaoHeaderValue | null>(null);
@@ -96,7 +107,7 @@ function PassLineSegmentosForm() {
         setHeaderOriginal(headerDeSessao(sessao));
         setSincronizadoEmOriginal(sessao.sincronizadoEm);
       }
-      const base = estadoInicial();
+      const base = estadoInicial(sessao?.maquina ?? "MCC2");
       const chavesBase = new Set(base.map(chaveLeitura));
       const extras = salvas.filter((l) => !chavesBase.has(chaveLeitura(l)));
       const mesclado = base.map((l) => {
@@ -114,6 +125,18 @@ function PassLineSegmentosForm() {
       setCarregando(false);
     })();
   }, [sessaoId]);
+
+  // Sessão nova: a lista de segmentos depende da máquina (MCC4 é diferente
+  // das demais) — reseta as leituras se o técnico trocar a máquina antes de
+  // preencher. Não mexe numa sessão que já está sendo editada.
+  function handleHeaderChange(novoHeader: SessaoHeaderValue) {
+    if (!sessaoId && novoHeader.maquina !== header.maquina) {
+      const nova = estadoInicial(novoHeader.maquina);
+      setLeituras(nova);
+      setLeiturasOriginais(nova.map((l) => ({ ...l })));
+    }
+    setHeader(novoHeader);
+  }
 
   function setValor(
     segmento: string,
@@ -266,16 +289,16 @@ function PassLineSegmentosForm() {
             {sessaoId ? "Editar" : ""} Pass-Line dos Segmentos
           </h1>
           <p className="text-sm text-[var(--text-dim)]">
-            Tolerância: ±{TOLERANCIA.toFixed(2)}mm — o número de posições
-            varia por segmento e veio
+            Tolerância: ±{toleranciaDaMaquina(header.maquina).toFixed(2)}mm — o número de
+            posições varia por segmento e veio
           </p>
         </div>
       </div>
 
-      <SessaoHeader value={header} onChange={setHeader} />
+      <SessaoHeader value={header} onChange={handleHeaderChange} />
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {SEGMENTOS_PADRAO.map((segmento) => (
+        {segmentosDaMaquina(header.maquina).map((segmento) => (
           <div key={segmento} className="surface p-4">
             <div className="mb-3 flex items-center gap-2">
               <span
@@ -303,7 +326,7 @@ function PassLineSegmentosForm() {
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       {posicoes.map((l) => {
-                        const fora = foraDaTolerancia(l.valor);
+                        const fora = foraDaTolerancia(l.valor, toleranciaDaMaquina(header.maquina));
                         return (
                           <div
                             key={l.posicao}

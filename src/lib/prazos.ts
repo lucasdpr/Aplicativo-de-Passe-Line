@@ -13,6 +13,17 @@ const FICHAS_MONITORADAS: TipoFicha[] = [
   "EMPENO_DESGASTE",
 ];
 
+/**
+ * Nem toda máquina tem as mesmas fichas — a MCC4 usa Pass-Line dos
+ * Segmentos (não a Desempenadeira, que é só MCC2/MCC3) e GAP, mas não tem
+ * Empeno e Desgaste.
+ */
+const FICHAS_POR_MAQUINA: Record<Maquina, TipoFicha[]> = {
+  MCC2: FICHAS_MONITORADAS,
+  MCC3: FICHAS_MONITORADAS,
+  MCC4: ["PASS_LINE_SEGMENTOS", "GAP"],
+};
+
 const NOMES_FICHA: Record<TipoFicha, string> = {
   PASS_LINE_DESEMPENADEIRA: "Pass-Line (Desempenadeira)",
   GAP: "GAP",
@@ -41,7 +52,7 @@ export function todosOsCombos(): Combo[] {
   const combos: Combo[] = [];
   for (const maquina of Object.keys(VEIOS_POR_MAQUINA) as Maquina[]) {
     for (const veio of VEIOS_POR_MAQUINA[maquina]) {
-      for (const tipoFicha of FICHAS_MONITORADAS) {
+      for (const tipoFicha of FICHAS_POR_MAQUINA[maquina]) {
         combos.push({ tipoFicha, maquina, veio });
       }
     }
