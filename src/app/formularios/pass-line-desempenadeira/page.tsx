@@ -16,7 +16,13 @@ import { db } from "@/lib/db/dexie";
 import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
-import { agruparCampos, clamparNumero, estiloColuna } from "@/lib/tabelaCampos";
+import {
+  agruparCampos,
+  clamparNumero,
+  estiloColuna,
+  formatarValorDigitado,
+  paraValorDigitado,
+} from "@/lib/tabelaCampos";
 import {
   N_CAD_RANGE,
   TOLERANCIAS,
@@ -112,7 +118,7 @@ function PassLineDesempenadeiraForm() {
     campo: keyof LinhaPassLineDesempenadeira,
     valorTexto: string
   ) {
-    let valor: number | undefined = valorTexto === "" ? undefined : Number(valorTexto);
+    let valor: number | undefined = paraValorDigitado(valorTexto, 2);
     if (valor !== undefined) {
       const ehAjuste = campo.toLowerCase().includes("ajuste");
       valor = clamparNumero(valor, ehAjuste ? -9.99 : 0, ehAjuste ? 9.99 : 999.99);
@@ -281,14 +287,11 @@ function PassLineDesempenadeiraForm() {
                     return (
                       <td key={c.key} style={estiloColuna(g.indice, i === 0)}>
                         <input
-                          type="number"
-                          step="0.01"
-                          min={c.key.toLowerCase().includes("ajuste") ? -9.99 : 0}
-                          max={c.key.toLowerCase().includes("ajuste") ? 9.99 : 999.99}
+                          type="text"
                           inputMode="decimal"
                           placeholder="—"
                           className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
-                          value={valor ?? ""}
+                          value={formatarValorDigitado(valor, 2)}
                           onChange={(e) =>
                             setValor(l.nCad, c.key, e.target.value)
                           }

@@ -17,7 +17,13 @@ import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
 import { N_CAD_RANGE, type LinhaEmpenoDesgaste, type SessaoMedicao } from "@/types";
-import { agruparCampos, clamparNumero, estiloColuna } from "@/lib/tabelaCampos";
+import {
+  agruparCampos,
+  clamparNumero,
+  estiloColuna,
+  formatarValorDigitado,
+  paraValorDigitado,
+} from "@/lib/tabelaCampos";
 
 function linhasIniciais(): LinhaEmpenoDesgaste[] {
   const linhas: LinhaEmpenoDesgaste[] = [];
@@ -104,12 +110,11 @@ function EmpenoDesgasteForm() {
     campo: keyof LinhaEmpenoDesgaste,
     valorTexto: string
   ) {
-    let valor: string | number | undefined =
-      valorTexto === ""
+    let valor: string | number | undefined = CAMPOS_TEXTO.has(campo)
+      ? valorTexto === ""
         ? undefined
-        : CAMPOS_TEXTO.has(campo)
-          ? valorTexto
-          : Number(valorTexto);
+        : valorTexto
+      : paraValorDigitado(valorTexto, 2);
     if (typeof valor === "number") {
       valor = clamparNumero(valor, 0, 999.99);
     }
@@ -276,14 +281,15 @@ function EmpenoDesgasteForm() {
                     return (
                       <td key={c.key} style={estiloColuna(g.indice, i === 0)}>
                         <input
-                          type={ehTexto ? "text" : "number"}
-                          step={ehTexto ? undefined : "0.01"}
-                          min={ehTexto ? undefined : 0}
-                          max={ehTexto ? undefined : 999.99}
+                          type="text"
                           inputMode={ehTexto ? "text" : "decimal"}
                           placeholder="—"
                           className="input-cell"
-                          value={valor ?? ""}
+                          value={
+                            ehTexto
+                              ? (valor as string | undefined) ?? ""
+                              : formatarValorDigitado(valor as number | undefined, 2)
+                          }
                           onChange={(e) =>
                             setValor(l.nCad, c.key, e.target.value)
                           }
