@@ -29,6 +29,12 @@ import {
   type LinhaPassLineDesempenadeira,
   type SessaoMedicao,
 } from "@/types";
+import { carregarRascunho, limparRascunho, salvarRascunho } from "@/lib/rascunho";
+
+interface RascunhoPassLineDesempenadeira {
+  header: SessaoHeaderValue;
+  linhas: LinhaPassLineDesempenadeira[];
+}
 
 const TOLERANCIA = TOLERANCIAS.PASS_LINE_DESEMPENADEIRA;
 
@@ -73,9 +79,16 @@ function PassLineDesempenadeiraForm() {
   const searchParams = useSearchParams();
   const sessaoId = searchParams.get("sessaoId");
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
-  const [header, setHeader] = useState<SessaoHeaderValue>(novaSessaoHeader());
+  const chaveRascunho = `pass-line-desempenadeira:${sessaoId ?? "novo"}`;
+  const [header, setHeader] = useState<SessaoHeaderValue>(
+    () =>
+      carregarRascunho<RascunhoPassLineDesempenadeira>(chaveRascunho)?.header ??
+      novaSessaoHeader()
+  );
   const [linhas, setLinhas] = useState<LinhaPassLineDesempenadeira[]>(
-    linhasIniciais()
+    () =>
+      carregarRascunho<RascunhoPassLineDesempenadeira>(chaveRascunho)?.linhas ??
+      linhasIniciais()
   );
   const [carregando, setCarregando] = useState(!!sessaoId);
   const [headerOriginal, setHeaderOriginal] =
@@ -98,7 +111,6 @@ function PassLineDesempenadeiraForm() {
         .equals(sessaoId)
         .toArray();
       if (sessao) {
-        setHeader(headerDeSessao(sessao));
         setHeaderOriginal(headerDeSessao(sessao));
         setSincronizadoEmOriginal(sessao.sincronizadoEm);
       }
@@ -107,11 +119,28 @@ function PassLineDesempenadeiraForm() {
         const salva = linhasSalvas.find((x) => x.nCad === l.nCad);
         return salva ? { ...l, ...salva } : l;
       });
-      setLinhas(mesclado);
       setLinhasOriginais(mesclado.map((l) => ({ ...l })));
+
+      const rascunho = carregarRascunho<RascunhoPassLineDesempenadeira>(chaveRascunho);
+      if (rascunho) {
+        setHeader(rascunho.header);
+        setLinhas(rascunho.linhas);
+      } else if (sessao) {
+        setHeader(headerDeSessao(sessao));
+        setLinhas(mesclado);
+      }
       setCarregando(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessaoId]);
+
+  function handleHeaderChange(novoHeader: SessaoHeaderValue) {
+    setHeader(novoHeader);
+    salvarRascunho<RascunhoPassLineDesempenadeira>(chaveRascunho, {
+      header: novoHeader,
+      linhas,
+    });
+  }
 
   function setValor(
     nCad: number,
@@ -123,9 +152,14 @@ function PassLineDesempenadeiraForm() {
       const ehAjuste = campo.toLowerCase().includes("ajuste");
       valor = clamparNumero(valor, ehAjuste ? -9.99 : 0, ehAjuste ? 9.99 : 999.99);
     }
-    setLinhas((prev) =>
-      prev.map((l) => (l.nCad === nCad ? { ...l, [campo]: valor } : l))
+    const novasLinhas = linhas.map((l) =>
+      l.nCad === nCad ? { ...l, [campo]: valor } : l
     );
+    setLinhas(novasLinhas);
+    salvarRascunho<RascunhoPassLineDesempenadeira>(chaveRascunho, {
+      header,
+      linhas: novasLinhas,
+    });
     setSalvo(false);
   }
 
@@ -206,6 +240,7 @@ function PassLineDesempenadeiraForm() {
         );
       }
 
+      limparRascunho(chaveRascunho);
       setSalvo(true);
       sincronizarPendentes().catch(() => {});
       setTimeout(() => router.push("/historico"), 900);
@@ -248,7 +283,7 @@ function PassLineDesempenadeiraForm() {
         </div>
       </div>
 
-      <SessaoHeader value={header} onChange={setHeader} />
+      <SessaoHeader value={header} onChange={handleHeaderChange} />
 
       <div className="surface scrollbar-thin max-h-[60vh] overflow-auto">
         <table className="table-industrial min-w-full text-sm">

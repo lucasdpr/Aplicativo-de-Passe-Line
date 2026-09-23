@@ -21,9 +21,17 @@ import {
   agruparCampos,
   clamparNumero,
   estiloColuna,
-  formatarValorDigitado,
-  paraValorDigitado,
+  processarEntradaPontoFixo,
 } from "@/lib/tabelaCampos";
+import { carregarRascunho, limparRascunho, salvarRascunho } from "@/lib/rascunho";
+
+interface RascunhoGap {
+  header: SessaoHeaderValue;
+  linhas: LinhaGap[];
+}
+
+const DIGITOS_INTEIROS_GAP = 3;
+const CASAS_DECIMAIS_GAP = 1;
 
 const TOLERANCIA_PADRAO = 0.5;
 
@@ -134,8 +142,13 @@ function GapForm() {
   const searchParams = useSearchParams();
   const sessaoId = searchParams.get("sessaoId");
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
-  const [header, setHeader] = useState<SessaoHeaderValue>(novaSessaoHeader());
-  const [linhas, setLinhas] = useState<LinhaGap[]>(linhasIniciais());
+  const chaveRascunho = `gap:${sessaoId ?? "novo"}`;
+  const [header, setHeader] = useState<SessaoHeaderValue>(
+    () => carregarRascunho<RascunhoGap>(chaveRascunho)?.header ?? novaSessaoHeader()
+  );
+  const [linhas, setLinhas] = useState<LinhaGap[]>(
+    () => carregarRascunho<RascunhoGap>(chaveRascunho)?.linhas ?? linhasIniciais()
+  );
   const [carregando, setCarregando] = useState(!!sessaoId);
   const [headerOriginal, setHeaderOriginal] =
     useState<SessaoHeaderValue | null>(null);
@@ -145,6 +158,9 @@ function GapForm() {
   const [linhasOriginais, setLinhasOriginais] = useState<LinhaGap[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  // Guarda o texto exatamente como foi digitado em cada campo numérico —
+  // não dá pra recalcular isso a partir do número salvo (ver processarEntradaPontoFixo).
+  const [textoDigitado, setTextoDigitado] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!sessaoId) return;
@@ -155,7 +171,6 @@ function GapForm() {
         .equals(sessaoId)
         .toArray();
       if (sessao) {
-        setHeader(headerDeSessao(sessao));
         setHeaderOriginal(headerDeSessao(sessao));
         setSincronizadoEmOriginal(sessao.sincronizadoEm);
       }
@@ -164,24 +179,67 @@ function GapForm() {
         const salva = linhasSalvas.find((x) => x.nCad === l.nCad);
         return salva ? { ...l, ...salva } : l;
       });
-      setLinhas(mesclado);
       setLinhasOriginais(mesclado.map((l) => ({ ...l })));
+
+      // Se tiver um rascunho local (edição que não chegou a ser salva),
+      // ele tem prioridade sobre o que está gravado — é o mais recente.
+      const rascunho = carregarRascunho<RascunhoGap>(chaveRascunho);
+      if (rascunho) {
+        setHeader(rascunho.header);
+        setLinhas(rascunho.linhas);
+      } else if (sessao) {
+        setHeader(headerDeSessao(sessao));
+        setLinhas(mesclado);
+      }
+      setTextoDigitado(new Map());
       setCarregando(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessaoId]);
 
+  function chaveCelula(nCad: number, campo: keyof LinhaGap) {
+    return `${nCad}|${campo}`;
+  }
+
+  function handleHeaderChange(novoHeader: SessaoHeaderValue) {
+    setHeader(novoHeader);
+    salvarRascunho<RascunhoGap>(chaveRascunho, { header: novoHeader, linhas });
+  }
+
   function setValor(nCad: number, campo: keyof LinhaGap, valorTexto: string) {
-    let valor: string | number | undefined = CAMPOS_TEXTO.has(campo)
-      ? valorTexto === ""
-        ? undefined
-        : valorTexto
-      : paraValorDigitado(valorTexto);
+    if (CAMPOS_TEXTO.has(campo)) {
+      const valor = valorTexto === "" ? undefined : valorTexto;
+      const novasLinhas = linhas.map((l) =>
+        l.nCad === nCad ? { ...l, [campo]: valor } : l
+      );
+      setLinhas(novasLinhas);
+      salvarRascunho<RascunhoGap>(chaveRascunho, { header, linhas: novasLinhas });
+      setSalvo(false);
+      return;
+    }
+
+    const { texto, numero } = processarEntradaPontoFixo(
+      valorTexto,
+      DIGITOS_INTEIROS_GAP,
+      CASAS_DECIMAIS_GAP
+    );
+    const chave = chaveCelula(nCad, campo);
+    setTextoDigitado((prev) => {
+      const novo = new Map(prev);
+      if (texto === "") novo.delete(chave);
+      else novo.set(chave, texto);
+      return novo;
+    });
+
+    let valor: number | undefined = numero;
     if (typeof valor === "number") {
       valor = clamparNumero(valor, 0, 999.99);
     }
-    setLinhas((prev) =>
-      prev.map((l) => (l.nCad === nCad ? { ...l, [campo]: valor } : l))
+    const novasLinhas = linhas.map((l) =>
+      l.nCad === nCad ? { ...l, [campo]: valor } : l
     );
+    setLinhas(novasLinhas);
+    salvarRascunho<RascunhoGap>(chaveRascunho, { header, linhas: novasLinhas });
     setSalvo(false);
   }
 
@@ -255,6 +313,7 @@ function GapForm() {
         );
       }
 
+      limparRascunho(chaveRascunho);
       setSalvo(true);
       sincronizarPendentes().catch(() => {});
       setTimeout(() => router.push("/historico"), 900);
@@ -300,7 +359,7 @@ function GapForm() {
         </div>
       </div>
 
-      <SessaoHeader value={header} onChange={setHeader} />
+      <SessaoHeader value={header} onChange={handleHeaderChange} />
 
       <p
         className="rounded-lg px-3 py-2 text-xs"
@@ -350,7 +409,10 @@ function GapForm() {
                     type="text"
                     inputMode="decimal"
                     className="input-cell"
-                    value={formatarValorDigitado(l.toleranciaMm)}
+                    value={
+                      textoDigitado.get(chaveCelula(l.nCad, "toleranciaMm")) ??
+                      (l.toleranciaMm !== undefined ? String(l.toleranciaMm) : "")
+                    }
                     onChange={(e) =>
                       setValor(l.nCad, "toleranciaMm", e.target.value)
                     }
@@ -375,7 +437,12 @@ function GapForm() {
                           inputMode={ehTexto ? "text" : "decimal"}
                           placeholder="—"
                           className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
-                          value={ehTexto ? (valor as string | undefined) ?? "" : formatarValorDigitado(valor as number | undefined)}
+                          value={
+                            ehTexto
+                              ? (valor as string | undefined) ?? ""
+                              : textoDigitado.get(chaveCelula(l.nCad, c.key)) ??
+                                (valor !== undefined ? String(valor) : "")
+                          }
                           onChange={(e) =>
                             setValor(l.nCad, c.key, e.target.value)
                           }

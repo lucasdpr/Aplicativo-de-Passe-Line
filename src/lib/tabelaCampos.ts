@@ -81,6 +81,48 @@ export function formatarValorDigitado(
   return (negativo ? "-" : "") + semZeroInicial;
 }
 
+/**
+ * Formata a digitação encaixando os primeiros `digitosInteiros` dígitos como
+ * parte inteira — o ponto decimal só aparece sozinho depois que esse limite
+ * é passado (ex.: com 3 dígitos inteiros, digitar "261" mostra "261"; o 4º
+ * dígito entra depois do ponto: "2615" vira "261,5"). Se a pessoa digitar o
+ * ponto/vírgula na mão, isso é respeitado exatamente como foi digitado, sem
+ * inserir outro ponto automático.
+ *
+ * Devolve o texto pronto pra exibir no campo (guarda numa variável de
+ * estado à parte — não dá pra recalcular isso só a partir do número depois,
+ * porque "261" e "261,0" são o mesmo número mas vieram de digitações
+ * diferentes) junto com o valor numérico correspondente.
+ */
+export function processarEntradaPontoFixo(
+  valorTexto: string,
+  digitosInteiros: number,
+  decimais: number
+): { texto: string; numero: number | undefined } {
+  if (valorTexto.trim() === "") return { texto: "", numero: undefined };
+  const negativo = valorTexto.trim().startsWith("-");
+  const temSeparadorManual = /[.,]/.test(valorTexto);
+  if (temSeparadorManual) {
+    const normalizado = valorTexto.replace(",", ".");
+    const numero = Number(normalizado);
+    return { texto: valorTexto, numero: Number.isNaN(numero) ? undefined : numero };
+  }
+  const digitos = valorTexto.replace(/[^0-9]/g, "");
+  if (digitos === "") {
+    return { texto: negativo ? "-" : "", numero: negativo ? -0 : undefined };
+  }
+  const prefixo = negativo ? "-" : "";
+  if (digitos.length <= digitosInteiros) {
+    const numero = Number(digitos);
+    return { texto: prefixo + digitos, numero: negativo ? -numero : numero };
+  }
+  const parteInteira = digitos.slice(0, digitosInteiros);
+  const parteDecimal = digitos.slice(digitosInteiros, digitosInteiros + decimais);
+  const texto = `${prefixo}${parteInteira}.${parteDecimal}`;
+  const numero = Number(texto);
+  return { texto, numero: Number.isNaN(numero) ? undefined : numero };
+}
+
 /** Estilo pra faixa alternada + divisória entre grupos de colunas na tabela. */
 export function estiloColuna(indiceGrupo: number, primeiraDoGrupo: boolean) {
   return {

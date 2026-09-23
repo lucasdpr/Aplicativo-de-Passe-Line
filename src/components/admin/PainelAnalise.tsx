@@ -55,6 +55,13 @@ function corDaVariacao(combo: AnaliseCombo): string {
   return piorando ? "#fca5a5" : "var(--success)";
 }
 
+const SIGLA_FICHA: Record<AnaliseCombo["tipoFicha"], string> = {
+  PASS_LINE_DESEMPENADEIRA: "PL-D",
+  GAP: "GAP",
+  EMPENO_DESGASTE: "E/D",
+  PASS_LINE_SEGMENTOS: "PL-S",
+};
+
 function textoTendencia(combo: AnaliseCombo): string {
   if (combo.tendencia === "estavel") return "Estável — sem variação relevante entre medições";
   if (combo.tendencia === "melhorando") return "Melhorando a cada medição";
@@ -164,7 +171,7 @@ export function PainelAnalise() {
       comDados
         .filter((c) => c.variacaoAbsoluta !== null)
         .map((c) => ({
-          nome: c.label.replace(" — ", "\n"),
+          nome: `${SIGLA_FICHA[c.tipoFicha]} ${c.maquina}-${c.veio}`,
           chave: `${c.tipoFicha}|${c.maquina}|${c.veio}`,
           variacao: Number((c.variacaoAbsoluta ?? 0).toFixed(3)),
           cor: corDaVariacao(c),
@@ -245,26 +252,46 @@ export function PainelAnalise() {
           </div>
 
           <div className="surface p-4">
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {comDados.map((c) => {
-                const chave = `${c.tipoFicha}|${c.maquina}|${c.veio}`;
-                const ativo = chave === selecionado;
+            <div className="mb-3 space-y-2">
+              {(
+                [
+                  ["PASS_LINE_DESEMPENADEIRA", "Pass-Line (Desempenadeira)"],
+                  ["PASS_LINE_SEGMENTOS", "Pass-Line dos Segmentos"],
+                  ["GAP", "GAP"],
+                  ["EMPENO_DESGASTE", "Empeno e Desgaste"],
+                ] as const
+              ).map(([tipo, rotulo]) => {
+                const linha = comDados.filter((c) => c.tipoFicha === tipo);
+                if (linha.length === 0) return null;
                 return (
-                  <button
-                    key={chave}
-                    onClick={() => setSelecionado(chave)}
-                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition"
-                    style={
-                      ativo
-                        ? { background: "var(--primary-soft)", color: "var(--primary-strong)" }
-                        : { background: "var(--surface-raised)", color: "var(--text-dim)" }
-                    }
-                  >
-                    {c.foraToleranciaAgora && (
-                      <AlertTriangle size={11} style={{ color: "#fca5a5" }} />
-                    )}
-                    {c.label}
-                  </button>
+                  <div key={tipo}>
+                    <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-[var(--text-faint)]">
+                      {rotulo}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {linha.map((c) => {
+                        const chave = `${c.tipoFicha}|${c.maquina}|${c.veio}`;
+                        const ativo = chave === selecionado;
+                        return (
+                          <button
+                            key={chave}
+                            onClick={() => setSelecionado(chave)}
+                            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition"
+                            style={
+                              ativo
+                                ? { background: "var(--primary-soft)", color: "var(--primary-strong)" }
+                                : { background: "var(--surface-raised)", color: "var(--text-dim)" }
+                            }
+                          >
+                            {c.foraToleranciaAgora && (
+                              <AlertTriangle size={11} style={{ color: "#fca5a5" }} />
+                            )}
+                            {c.maquina} veio {c.veio}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -509,16 +536,19 @@ export function PainelAnalise() {
             <h3 className="mb-3 text-xs font-semibold text-[var(--text-dim)]">
               Comparação de variação entre equipamentos
             </h3>
-            <div style={{ width: "100%", height: 200 }}>
+            <div style={{ width: "100%", height: 260 }}>
               <ResponsiveContainer>
-                <BarChart data={dadosComparacao} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                <BarChart data={dadosComparacao} margin={{ top: 4, right: 8, left: -16, bottom: 48 }}>
                   <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="nome"
-                    tick={{ fill: "var(--text-faint)", fontSize: 9 }}
+                    tick={{ fill: "var(--text-faint)", fontSize: 10 }}
                     axisLine={{ stroke: "var(--border)" }}
                     tickLine={false}
                     interval={0}
+                    angle={-40}
+                    textAnchor="end"
+                    height={60}
                   />
                   <YAxis
                     tick={{ fill: "var(--text-faint)", fontSize: 11 }}
