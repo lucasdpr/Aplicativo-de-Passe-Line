@@ -289,7 +289,7 @@ function GapForm() {
             {sessaoId ? "Editar" : ""} Medição e Ajuste de GAP
           </h1>
           <p className="text-sm text-[var(--text-dim)]">
-            Ajuste o GAP nominal por Nº CAD se divergir do padrão impresso
+            GAP nominal já vem preenchido conforme a ficha impressa, por Nº CAD
           </p>
         </div>
       </div>
@@ -336,19 +336,8 @@ function GapForm() {
             {linhas.map((l) => (
               <tr key={l.nCad}>
                 <td className="n-cad-cell">{l.nCad}</td>
-                <td>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min={0}
-                    max={999.99}
-                    inputMode="decimal"
-                    className="input-cell"
-                    value={l.gapNominal}
-                    onChange={(e) =>
-                      setValor(l.nCad, "gapNominal", e.target.value)
-                    }
-                  />
+                <td className="text-center font-medium text-[var(--text-dim)]">
+                  {l.gapNominal.toFixed(1)}
                 </td>
                 <td>
                   <input
