@@ -59,6 +59,20 @@ export interface AnaliseCombo extends Combo {
   piorPonto: PontoExtremo | null;
   /** true quando a última medição já está fora da tolerância agora. */
   foraToleranciaAgora: boolean;
+  /** Limite de tolerância usado nesse combo (mm), ou null se a ficha não tem regra. */
+  toleranciaMm: number | null;
+  /** Classificação simples da tendência, considerando o ritmo por medição. */
+  tendencia: "piorando" | "melhorando" | "estavel" | null;
+  /** Intervalo médio (em dias) observado entre as medições reais desse combo. */
+  intervaloMedioDias: number | null;
+  /**
+   * Quantas medições, no ritmo atual, faltam pra esse equipamento passar da
+   * tolerância (a partir do último valor). null quando não dá pra estimar
+   * (sem tolerância definida, sem ritmo, já fora, ou melhorando).
+   */
+  medicoesAteForaTolerancia: number | null;
+  /** A mesma estimativa acima, convertida em dias usando o intervalo médio real. */
+  diasAteForaTolerancia: number | null;
 }
 
 interface SessaoLeve {
@@ -76,6 +90,9 @@ interface AgregadoCombo {
   pior: PontoExtremo | null;
   ultimaDataVista: string | null;
   foraToleranciaAgora: boolean;
+  /** Soma e contagem pra calcular a tolerância média usada (GAP varia por linha). */
+  somaTolerancia: number;
+  contagemTolerancia: number;
 }
 
 function novoAgregado(): AgregadoCombo {
@@ -86,8 +103,15 @@ function novoAgregado(): AgregadoCombo {
     pior: null,
     ultimaDataVista: null,
     foraToleranciaAgora: false,
+    somaTolerancia: 0,
+    contagemTolerancia: 0,
   };
 }
+
+/** Tolerância fixa por tipo de ficha (mm). GAP tem tolerância própria por linha (ver abaixo). */
+const TOLERANCIA_FIXA_MM: Partial<Record<TipoFicha, number>> = {
+  PASS_LINE_DESEMPENADEIRA: 0.5,
+};
 
 /** Atualiza o "pior ponto" de um combo, considerando se maior ou menor valor é o crítico. */
 function atualizarPior(
@@ -210,6 +234,10 @@ export async function buscarAnaliseCombos(
     for (const valor of medidos) {
       atualizarPior(comboAgregado, { nCad, valor, data: sessao.data }, false);
     }
+    if (Number.isFinite(tolerancia)) {
+      comboAgregado.somaTolerancia += tolerancia;
+      comboAgregado.contagemTolerancia += 1;
+    }
     const atual = agregadoPorSessao.get(sessaoId) ?? { valor: null, fora: 0, total: 0 };
     const somaAnterior = (atual.valor ?? 0) * atual.total;
     const novoTotal = atual.total + medidos.length;
@@ -287,6 +315,11 @@ export async function buscarAnaliseCombos(
         medicoesTolerancia: 0,
         piorPonto: null,
         foraToleranciaAgora: false,
+        toleranciaMm: null,
+        tendencia: null,
+        intervaloMedioDias: null,
+        medicoesAteForaTolerancia: null,
+        diasAteForaTolerancia: null,
       });
       continue;
     }
@@ -298,6 +331,59 @@ export async function buscarAnaliseCombos(
     const variacaoPercentual = primeiroValor !== 0 ? (variacaoAbsoluta / primeiroValor) * 100 : null;
     const variacaoPorMedicao =
       agregado.serie.length > 1 ? variacaoAbsoluta / (agregado.serie.length - 1) : null;
+
+    const toleranciaMm = !temToleranciaDefinida
+      ? null
+      : TOLERANCIA_FIXA_MM[combo.tipoFicha] ??
+        (agregado.contagemTolerancia > 0 ? agregado.somaTolerancia / agregado.contagemTolerancia : null);
+
+    const LIMIAR_ESTAVEL = 0.0005; // mm por medição — abaixo disso, considera "estável"
+    const tendencia: AnaliseCombo["tendencia"] =
+      variacaoPorMedicao === null
+        ? null
+        : Math.abs(variacaoPorMedicao) < LIMIAR_ESTAVEL
+          ? "estavel"
+          : combo.tipoFicha === "EMPENO_DESGASTE"
+            ? variacaoPorMedicao < 0
+              ? "piorando"
+              : "melhorando"
+            : variacaoPorMedicao > 0
+              ? "piorando"
+              : "melhorando";
+
+    let intervaloMedioDias: number | null = null;
+    if (agregado.serie.length > 1) {
+      const primeiraData = new Date(`${agregado.serie[0].data}T00:00:00Z`).getTime();
+      const ultimaData = new Date(
+        `${agregado.serie[agregado.serie.length - 1].data}T00:00:00Z`
+      ).getTime();
+      const diasTotais = (ultimaData - primeiraData) / 86_400_000;
+      intervaloMedioDias = diasTotais / (agregado.serie.length - 1);
+    }
+
+    // Estimativa de quantas medições faltam pra sair da tolerância, seguindo
+    // o ritmo médio observado — só faz sentido quando a tendência é de
+    // piora, o combo tem tolerância definida, e ainda não está fora dela.
+    let medicoesAteForaTolerancia: number | null = null;
+    let diasAteForaTolerancia: number | null = null;
+    if (
+      toleranciaMm !== null &&
+      variacaoPorMedicao !== null &&
+      ultimoValor !== null &&
+      tendencia === "piorando" &&
+      !(temToleranciaDefinida && agregado.foraToleranciaAgora)
+    ) {
+      const distanciaAtual =
+        combo.tipoFicha === "EMPENO_DESGASTE" ? ultimoValor : toleranciaMm - ultimoValor;
+      const ritmo = Math.abs(variacaoPorMedicao);
+      if (distanciaAtual > 0 && ritmo > 0) {
+        medicoesAteForaTolerancia = Math.ceil(distanciaAtual / ritmo);
+        if (intervaloMedioDias !== null) {
+          diasAteForaTolerancia = Math.round(medicoesAteForaTolerancia * intervaloMedioDias);
+        }
+      }
+    }
+
     resultado.push({
       ...combo,
       label: comboLabel(combo),
@@ -319,6 +405,11 @@ export async function buscarAnaliseCombos(
       medicoesTolerancia: agregado.medicoesTolerancia,
       piorPonto: agregado.pior,
       foraToleranciaAgora: temToleranciaDefinida && agregado.foraToleranciaAgora,
+      toleranciaMm,
+      tendencia,
+      intervaloMedioDias,
+      medicoesAteForaTolerancia,
+      diasAteForaTolerancia,
     });
   }
 
