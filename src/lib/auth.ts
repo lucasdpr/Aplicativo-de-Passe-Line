@@ -11,6 +11,19 @@ async function hashPin(pin: string): Promise<string> {
     .join("");
 }
 
+/**
+ * Guarda uma cópia local do técnico (pra login offline depois). Em aba
+ * anônima/privada alguns navegadores bloqueiam ou limitam o IndexedDB —
+ * isso nunca pode derrubar um login que já foi confirmado pelo servidor.
+ */
+async function guardarLocalSeConseguir(tecnico: Tecnico) {
+  try {
+    await db.tecnicos.put(tecnico);
+  } catch (err) {
+    console.warn("Não foi possível guardar o técnico localmente", err);
+  }
+}
+
 function semPinDe(tecnico: Tecnico): Omit<Tecnico, "pin"> {
   return {
     id: tecnico.id,
@@ -98,7 +111,7 @@ export async function cadastrarTecnico(
   }
 
   const tecnico: Tecnico = { ...corpo.tecnico, pin: corpo.pinHash };
-  await db.tecnicos.put(tecnico);
+  await guardarLocalSeConseguir(tecnico);
   return semPinDe(tecnico);
 }
 
@@ -122,9 +135,7 @@ export async function autenticarPorPin(
       if (resp.ok) {
         const { tecnico: encontrado } = await resp.json();
         const tecnico: Tecnico = { ...encontrado, pin: pinHash };
-        // Guarda uma cópia local pra esse aparelho continuar aceitando o
-        // login desse técnico mesmo sem internet depois.
-        await db.tecnicos.put(tecnico);
+        await guardarLocalSeConseguir(tecnico);
         return semPinDe(tecnico);
       }
 
@@ -150,7 +161,7 @@ export async function autenticarPorPin(
           if (migrarResp.ok) {
             const { tecnico: migradoRemoto } = await migrarResp.json();
             const migrado: Tecnico = { ...migradoRemoto, pin: pinHash };
-            await db.tecnicos.put(migrado);
+            await guardarLocalSeConseguir(migrado);
             return semPinDe(migrado);
           }
         }
@@ -179,7 +190,13 @@ async function buscarLegadoLocal(
   matriculaPadronizada: string,
   pinHash: string
 ): Promise<Tecnico | null> {
-  const todosLocais = await db.tecnicos.toArray();
+  let todosLocais: Tecnico[];
+  try {
+    todosLocais = await db.tecnicos.toArray();
+  } catch (err) {
+    console.warn("IndexedDB indisponível pra checar cadastro local", err);
+    return null;
+  }
   const candidatosLocais = todosLocais.filter(
     (t) => t.matricula.trim().toUpperCase() === matriculaPadronizada
   );
