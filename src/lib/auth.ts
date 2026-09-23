@@ -1,14 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { db } from "@/lib/db/dexie";
-import { supabase } from "@/lib/supabase";
 import type { PapelTecnico, Tecnico } from "@/types";
-import { v4 as uuid } from "uuid";
-
-const MATRICULAS_ADMIN = (process.env.NEXT_PUBLIC_ADMIN_MATRICULAS ?? "")
-  .split(",")
-  .map((m) => m.trim())
-  .filter(Boolean);
 
 async function hashPin(pin: string): Promise<string> {
   const data = new TextEncoder().encode(pin);
@@ -27,32 +20,6 @@ function semPinDe(tecnico: Tecnico): Omit<Tecnico, "pin"> {
     papel: tecnico.papel,
     aprovado: tecnico.aprovado,
     criadoEm: tecnico.criadoEm,
-  };
-}
-
-function paraLinhaRemota(t: Tecnico) {
-  return {
-    id: t.id,
-    nome: t.nome,
-    matricula: t.matricula,
-    funcao: t.funcao,
-    pin_hash: t.pin,
-    papel: t.papel,
-    aprovado: t.aprovado,
-    criado_em: t.criadoEm,
-  };
-}
-
-function deLinhaRemota(row: Record<string, unknown>): Tecnico {
-  return {
-    id: row.id as string,
-    nome: row.nome as string,
-    matricula: row.matricula as string,
-    funcao: row.funcao as string,
-    pin: row.pin_hash as string,
-    papel: row.papel as PapelTecnico,
-    aprovado: row.aprovado as boolean,
-    criadoEm: row.criado_em as string,
   };
 }
 
@@ -117,38 +84,20 @@ export async function cadastrarTecnico(
   pin: string,
   tipoAcesso: "tecnico" | "visitante" = "tecnico"
 ) {
-  if (!supabase || !navigator.onLine) throw new SemConexaoError();
+  if (!navigator.onLine) throw new SemConexaoError();
 
-  const nomePadronizado = nome.trim().toUpperCase();
-  const matriculaPadronizada = matricula.trim().toUpperCase();
+  const resp = await fetch("/api/auth/cadastrar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nome, matricula, funcao, pin, tipoAcesso }),
+  });
+  const corpo = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    if (corpo.error === "matricula_ja_cadastrada") throw new MatriculaJaCadastradaError();
+    throw new Error(corpo.error ?? "Não foi possível cadastrar.");
+  }
 
-  const { data: existentes, error: buscaError } = await supabase
-    .from("tecnicos")
-    .select("id")
-    .ilike("matricula", matriculaPadronizada);
-  if (buscaError) throw buscaError;
-  if (existentes && existentes.length > 0) throw new MatriculaJaCadastradaError();
-
-  const pinHash = await hashPin(pin);
-  const ehAdmin = MATRICULAS_ADMIN.includes(matriculaPadronizada);
-  const tecnico: Tecnico = {
-    id: uuid(),
-    nome: nomePadronizado,
-    matricula: matriculaPadronizada,
-    funcao,
-    pin: pinHash,
-    papel: ehAdmin ? "ADMIN" : tipoAcesso === "visitante" ? "VISUALIZADOR" : "TECNICO",
-    // Matrículas da lista de admins pulam a fila de aprovação; as demais
-    // ficam pendentes até um admin confirmar no painel.
-    aprovado: ehAdmin,
-    criadoEm: new Date().toISOString(),
-  };
-
-  const { error: insertError } = await supabase
-    .from("tecnicos")
-    .insert(paraLinhaRemota(tecnico));
-  if (insertError) throw insertError;
-
+  const tecnico: Tecnico = { ...corpo.tecnico, pin: corpo.pinHash };
   await db.tecnicos.put(tecnico);
   return semPinDe(tecnico);
 }
@@ -160,71 +109,59 @@ export async function autenticarPorPin(
   const matriculaPadronizada = matricula.trim().toUpperCase();
   const pinHash = await hashPin(pin);
 
-  if (supabase && navigator.onLine) {
-    const { data: linhasRemotas, error } = await supabase
-      .from("tecnicos")
-      .select("*")
-      .ilike("matricula", matriculaPadronizada);
+  if (navigator.onLine) {
+    try {
+      const resp = await fetch("/api/auth/entrar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matricula: matriculaPadronizada, pin }),
+      });
 
-    if (!error && linhasRemotas) {
-      const candidatos = linhasRemotas.map(deLinhaRemota);
-      const tecnico = candidatos.find((t) => t.pin === pinHash);
+      if (resp.status === 403) throw new CadastroPendenteError();
 
-      if (tecnico) {
-        if (!tecnico.aprovado) throw new CadastroPendenteError();
-
-        const atualizacoes: Partial<Tecnico> = {};
-        if (tecnico.matricula !== matriculaPadronizada) {
-          atualizacoes.matricula = matriculaPadronizada;
-        }
-        if (tecnico.nome !== tecnico.nome.toUpperCase()) {
-          atualizacoes.nome = tecnico.nome.toUpperCase();
-        }
-        if (MATRICULAS_ADMIN.includes(matriculaPadronizada) && tecnico.papel !== "ADMIN") {
-          atualizacoes.papel = "ADMIN";
-        }
-        if (Object.keys(atualizacoes).length > 0) {
-          const atualizado = { ...tecnico, ...atualizacoes };
-          await supabase
-            .from("tecnicos")
-            .update(paraLinhaRemota(atualizado))
-            .eq("id", tecnico.id);
-          Object.assign(tecnico, atualizacoes);
-        }
-
+      if (resp.ok) {
+        const { tecnico: encontrado } = await resp.json();
+        const tecnico: Tecnico = { ...encontrado, pin: pinHash };
         // Guarda uma cópia local pra esse aparelho continuar aceitando o
         // login desse técnico mesmo sem internet depois.
         await db.tecnicos.put(tecnico);
         return semPinDe(tecnico);
       }
 
-      // Não achou na nuvem: pode ser um cadastro antigo, feito antes desta
-      // versão (só existia no aparelho). Confere no cache local e, se bater
-      // o PIN, migra esse técnico pra nuvem agora (mantendo o acesso que já
-      // tinha, sem exigir aprovação de novo).
-      const legado = await buscarLegadoLocal(matriculaPadronizada, pinHash);
-      if (legado) {
-        const migrado: Tecnico = {
-          ...legado,
-          matricula: matriculaPadronizada,
-          nome: legado.nome.toUpperCase(),
-          papel: MATRICULAS_ADMIN.includes(matriculaPadronizada)
-            ? "ADMIN"
-            : legado.papel,
-          aprovado: true,
-        };
-        const { error: upsertError } = await supabase
-          .from("tecnicos")
-          .upsert(paraLinhaRemota(migrado));
-        if (!upsertError) {
-          await db.tecnicos.put(migrado);
-          return semPinDe(migrado);
+      if (resp.status === 404) {
+        // Não achou na nuvem: pode ser um cadastro antigo, feito antes desta
+        // versão (só existia no aparelho). Confere no cache local e, se bater
+        // o PIN, migra esse técnico pra nuvem agora.
+        const legado = await buscarLegadoLocal(matriculaPadronizada, pinHash);
+        if (legado) {
+          const migrarResp = await fetch("/api/auth/migrar-legado", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: legado.id,
+              nome: legado.nome,
+              matricula: matriculaPadronizada,
+              funcao: legado.funcao,
+              pinHash,
+              papel: legado.papel,
+              criadoEm: legado.criadoEm,
+            }),
+          });
+          if (migrarResp.ok) {
+            const { tecnico: migradoRemoto } = await migrarResp.json();
+            const migrado: Tecnico = { ...migradoRemoto, pin: pinHash };
+            await db.tecnicos.put(migrado);
+            return semPinDe(migrado);
+          }
         }
       }
+    } catch (err) {
+      if (err instanceof CadastroPendenteError) throw err;
+      // Falha de rede genuína: cai pro fallback local abaixo.
     }
   }
 
-  // Offline (ou Supabase indisponível no momento): usa o cache local deste
+  // Offline (ou servidor indisponível no momento): usa o cache local deste
   // aparelho, alimentado por logins online anteriores.
   const tecnicoLocal = await buscarLegadoLocal(matriculaPadronizada, pinHash);
   if (!tecnicoLocal) return null;
@@ -259,48 +196,59 @@ async function buscarLegadoLocal(
 
 /** Lista todos os técnicos cadastrados (aprovados ou não). Requer internet. */
 export async function listarTecnicos(): Promise<Omit<Tecnico, "pin">[]> {
-  if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("tecnicos")
-    .select("*")
-    .order("criado_em", { ascending: false });
-  if (error || !data) return [];
-  return data.map((row) => semPinDe(deLinhaRemota(row)));
+  try {
+    const resp = await fetch("/api/tecnicos");
+    if (!resp.ok) return [];
+    const { tecnicos } = await resp.json();
+    return tecnicos ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function aprovarTecnico(tecnicoId: string) {
-  if (!supabase) throw new Error("Supabase não configurado");
-  const { error } = await supabase
-    .from("tecnicos")
-    .update({ aprovado: true })
-    .eq("id", tecnicoId);
-  if (error) throw error;
+  const resp = await fetch(`/api/tecnicos/${tecnicoId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ acao: "aprovar" }),
+  });
+  if (!resp.ok) {
+    const corpo = await resp.json().catch(() => ({}));
+    throw new Error(corpo.error ?? "Não foi possível aprovar.");
+  }
 }
 
 export async function resetarPin(tecnicoId: string, novoPin: string) {
-  if (!supabase) throw new Error("Supabase não configurado");
-  const pinHash = await hashPin(novoPin);
-  const { error } = await supabase
-    .from("tecnicos")
-    .update({ pin_hash: pinHash })
-    .eq("id", tecnicoId);
-  if (error) throw error;
+  const resp = await fetch(`/api/tecnicos/${tecnicoId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ acao: "resetarPin", novoPin }),
+  });
+  if (!resp.ok) {
+    const corpo = await resp.json().catch(() => ({}));
+    throw new Error(corpo.error ?? "Não foi possível resetar o PIN.");
+  }
 }
 
 export async function definirPapel(tecnicoId: string, papel: PapelTecnico) {
-  if (!supabase) throw new Error("Supabase não configurado");
-  const { error } = await supabase
-    .from("tecnicos")
-    .update({ papel })
-    .eq("id", tecnicoId);
-  if (error) throw error;
+  const resp = await fetch(`/api/tecnicos/${tecnicoId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ acao: "papel", papel }),
+  });
+  if (!resp.ok) {
+    const corpo = await resp.json().catch(() => ({}));
+    throw new Error(corpo.error ?? "Não foi possível trocar o papel.");
+  }
 }
 
 export async function excluirTecnico(tecnicoId: string) {
-  if (!supabase) throw new Error("Supabase não configurado");
   // As medições já registradas por este técnico são mantidas no histórico
   // (o vínculo é só o cadastro de acesso, não o registro de auditoria).
-  const { error } = await supabase.from("tecnicos").delete().eq("id", tecnicoId);
-  if (error) throw error;
+  const resp = await fetch(`/api/tecnicos/${tecnicoId}`, { method: "DELETE" });
+  if (!resp.ok) {
+    const corpo = await resp.json().catch(() => ({}));
+    throw new Error(corpo.error ?? "Não foi possível excluir.");
+  }
   await db.tecnicos.delete(tecnicoId);
 }

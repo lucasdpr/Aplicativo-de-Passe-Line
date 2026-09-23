@@ -79,57 +79,18 @@ export async function sincronizarPendentes(): Promise<{
 }
 
 async function enviarSessao(sessao: SessaoMedicao) {
-  if (!supabase) throw new Error("Supabase não configurado");
-
-  const { error: sessaoError } = await supabase.from("sessoes_medicao").upsert({
-    id: sessao.id,
-    tipo_ficha: sessao.tipoFicha,
-    maquina: sessao.maquina,
-    veio: sessao.veio,
-    data: sessao.data,
-    tecnico_id: sessao.tecnicoId,
-    tecnico_nome: sessao.tecnicoNome,
-    tecnico_matricula: sessao.tecnicoMatricula,
-    tecnico_funcao: sessao.tecnicoFuncao,
-    observacao: sessao.observacao,
-    inspecionado_por: sessao.inspecionadoPor,
-    liberado_por: sessao.liberadoPor,
-    criado_em: sessao.criadoEm,
-  });
-  if (sessaoError) throw sessaoError;
-
-  // Remove as linhas remotas antigas antes de reenviar: cobre tanto o
-  // primeiro envio (não-op) quanto o reenvio de uma sessão editada, que
-  // senão duplicaria as linhas no Supabase.
-  const { error: deleteError } = await supabase
-    .from(TABELA_POR_TIPO[sessao.tipoFicha])
-    .delete()
-    .eq("sessao_id", sessao.id);
-  if (deleteError) throw deleteError;
-
   const linhasTable = TABELA_LOCAL_POR_TIPO[sessao.tipoFicha];
   const linhas = await linhasTable.where("sessaoId").equals(sessao.id).toArray();
-  if (linhas.length === 0) return;
 
-  const linhasRemotas = linhas.map((linha) => {
-    const { id, sessaoId, ...resto } = linha;
-    void id;
-    return { sessao_id: sessaoId, ...toSnakeCase(resto) };
+  const resp = await fetch("/api/sessoes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessao, linhas }),
   });
-
-  const { error: linhasError } = await supabase
-    .from(TABELA_POR_TIPO[sessao.tipoFicha])
-    .insert(linhasRemotas);
-  if (linhasError) throw linhasError;
-}
-
-function toSnakeCase(obj: Record<string, unknown>) {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    const snake = key.replace(/[A-Z]/g, (l) => `_${l.toLowerCase()}`);
-    out[snake] = value;
+  if (!resp.ok) {
+    const corpo = await resp.json().catch(() => ({}));
+    throw new Error(corpo.error ?? "Falha ao sincronizar sessão");
   }
-  return out;
 }
 
 function fromSnakeCase<T>(row: Record<string, unknown>): T {
@@ -254,7 +215,7 @@ export async function houveConflitoDeEdicao(
 export async function excluirSessao(sessao: SessaoMedicao) {
   // Se ela já foi sincronizada, só dá para excluir com internet: senão o
   // registro remoto continua existindo e volta sozinho na próxima sincronização.
-  if (sessao.status === "SINCRONIZADO" && (!supabase || !navigator.onLine)) {
+  if (sessao.status === "SINCRONIZADO" && !navigator.onLine) {
     throw new Error(
       "Sem internet agora. Essa medição já está sincronizada — conecte antes de excluir, senão ela volta ao sincronizar depois."
     );
@@ -265,8 +226,11 @@ export async function excluirSessao(sessao: SessaoMedicao) {
   await db.sessoes.delete(sessao.id);
   await db.edicoes.where("sessaoId").equals(sessao.id).delete();
 
-  if (supabase && navigator.onLine) {
-    // As linhas remotas somem sozinhas (foreign key com "on delete cascade").
-    await supabase.from("sessoes_medicao").delete().eq("id", sessao.id);
+  if (navigator.onLine) {
+    const resp = await fetch(`/api/sessoes?id=${sessao.id}`, { method: "DELETE" });
+    if (!resp.ok) {
+      const corpo = await resp.json().catch(() => ({}));
+      throw new Error(corpo.error ?? "Falha ao excluir no servidor");
+    }
   }
 }
