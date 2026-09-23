@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Maquina, TipoFicha, Veio } from "@/types";
-import { comboLabel, type Combo } from "@/lib/prazos";
+import { comboLabel, intervaloDias, type Combo } from "@/lib/prazos";
 
 const VEIOS_POR_MAQUINA: Record<Maquina, Veio[]> = {
   MCC2: ["C", "D"],
@@ -35,6 +35,14 @@ export interface PontoExtremo {
   nCad: number;
   valor: number;
   data: string;
+}
+
+export interface DetalheNCad {
+  nCad: number;
+  ultimoValor: number;
+  ultimaData: string;
+  piorValor: number;
+  piorData: string;
 }
 
 export interface AnaliseCombo extends Combo {
@@ -73,6 +81,12 @@ export interface AnaliseCombo extends Combo {
   medicoesAteForaTolerancia: number | null;
   /** A mesma estimativa acima, convertida em dias usando o intervalo médio real. */
   diasAteForaTolerancia: number | null;
+  /** Quantos dias já se passaram desde a última medição registrada. */
+  diasDesdeUltimaMedicao: number | null;
+  /** Positivo = atrasado (dias além do prazo esperado); negativo = ainda dentro do prazo. */
+  diasAtraso: number | null;
+  /** Detalhe por Nº CAD (posição física), ordenado pelo número — pra achar onde exatamente está o problema. */
+  detalhePorNCad: DetalheNCad[];
 }
 
 interface SessaoLeve {
@@ -81,6 +95,13 @@ interface SessaoLeve {
   maquina: Maquina;
   veio: Veio;
   data: string;
+}
+
+interface AgregadoNCad {
+  ultimoValor: number;
+  ultimaData: string;
+  piorValor: number;
+  piorData: string;
 }
 
 interface AgregadoCombo {
@@ -93,6 +114,7 @@ interface AgregadoCombo {
   /** Soma e contagem pra calcular a tolerância média usada (GAP varia por linha). */
   somaTolerancia: number;
   contagemTolerancia: number;
+  porNCad: Map<number, AgregadoNCad>;
 }
 
 function novoAgregado(): AgregadoCombo {
@@ -105,7 +127,32 @@ function novoAgregado(): AgregadoCombo {
     foraToleranciaAgora: false,
     somaTolerancia: 0,
     contagemTolerancia: 0,
+    porNCad: new Map(),
   };
+}
+
+/** Mesma lógica de "pior" do `atualizarPior`, mas guardando também o último valor visto por Nº CAD. */
+function atualizarNCad(
+  agregado: AgregadoCombo,
+  nCad: number,
+  valor: number,
+  data: string,
+  piorEhMenor: boolean
+) {
+  const atual = agregado.porNCad.get(nCad);
+  if (!atual) {
+    agregado.porNCad.set(nCad, { ultimoValor: valor, ultimaData: data, piorValor: valor, piorData: data });
+    return;
+  }
+  if (data >= atual.ultimaData) {
+    atual.ultimoValor = valor;
+    atual.ultimaData = data;
+  }
+  const critico = piorEhMenor ? valor < atual.piorValor : valor > atual.piorValor;
+  if (critico) {
+    atual.piorValor = valor;
+    atual.piorData = data;
+  }
 }
 
 /** Tolerância fixa por tipo de ficha (mm). GAP tem tolerância própria por linha (ver abaixo). */
@@ -199,6 +246,7 @@ export async function buscarAnaliseCombos(
     if (valores.length === 0) continue;
     for (const v of valores) {
       atualizarPior(comboAgregado, { nCad, valor: v.valor, data: sessao.data }, false);
+      atualizarNCad(comboAgregado, nCad, v.valor, sessao.data, false);
     }
     const atual = agregadoPorSessao.get(sessaoId) ?? { valor: null, fora: 0, total: 0 };
     const somaAnterior = (atual.valor ?? 0) * atual.total;
@@ -233,6 +281,7 @@ export async function buscarAnaliseCombos(
     if (medidos.length === 0) continue;
     for (const valor of medidos) {
       atualizarPior(comboAgregado, { nCad, valor, data: sessao.data }, false);
+      atualizarNCad(comboAgregado, nCad, valor, sessao.data, false);
     }
     if (Number.isFinite(tolerancia)) {
       comboAgregado.somaTolerancia += tolerancia;
@@ -266,6 +315,7 @@ export async function buscarAnaliseCombos(
     if (diametros.length === 0) continue;
     for (const valor of diametros) {
       atualizarPior(comboAgregado, { nCad, valor, data: sessao.data }, true);
+      atualizarNCad(comboAgregado, nCad, valor, sessao.data, true);
     }
     const atual = agregadoPorSessao.get(sessaoId) ?? { valor: null, fora: 0, total: 0 };
     const somaAnterior = (atual.valor ?? 0) * atual.total;
@@ -320,6 +370,9 @@ export async function buscarAnaliseCombos(
         intervaloMedioDias: null,
         medicoesAteForaTolerancia: null,
         diasAteForaTolerancia: null,
+        diasDesdeUltimaMedicao: null,
+        diasAtraso: null,
+        detalhePorNCad: [],
       });
       continue;
     }
@@ -384,6 +437,25 @@ export async function buscarAnaliseCombos(
       }
     }
 
+    const hojeIso = new Date().toISOString().slice(0, 10);
+    const diasDesdeUltimaMedicao = Math.round(
+      (new Date(`${hojeIso}T00:00:00Z`).getTime() -
+        new Date(`${ultimaMedicaoEm}T00:00:00Z`).getTime()) /
+        86_400_000
+    );
+    const prazoDias = intervaloDias(combo.tipoFicha, combo.maquina);
+    const diasAtraso = diasDesdeUltimaMedicao - prazoDias;
+
+    const detalhePorNCad: DetalheNCad[] = Array.from(agregado.porNCad.entries())
+      .map(([nCad, d]) => ({
+        nCad,
+        ultimoValor: d.ultimoValor,
+        ultimaData: d.ultimaData,
+        piorValor: d.piorValor,
+        piorData: d.piorData,
+      }))
+      .sort((a, b) => a.nCad - b.nCad);
+
     resultado.push({
       ...combo,
       label: comboLabel(combo),
@@ -410,6 +482,9 @@ export async function buscarAnaliseCombos(
       intervaloMedioDias,
       medicoesAteForaTolerancia,
       diasAteForaTolerancia,
+      diasDesdeUltimaMedicao,
+      diasAtraso,
+      detalhePorNCad,
     });
   }
 
