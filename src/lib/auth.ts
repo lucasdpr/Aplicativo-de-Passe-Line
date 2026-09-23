@@ -124,10 +124,15 @@ export async function autenticarPorPin(
 
   if (navigator.onLine) {
     try {
+      // "navigator.onLine" só confirma que tem link de rede (ex.: conectado
+      // no wifi), não que a internet realmente funciona. Com wifi fraco/sem
+      // sinal de verdade, o fetch ficaria pendurado sem responder — por
+      // isso um limite de tempo curto, pra cair rápido no login local.
       const resp = await fetch("/api/auth/entrar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ matricula: matriculaPadronizada, pin }),
+        signal: AbortSignal.timeout(8000),
       });
 
       if (resp.status === 403) throw new CadastroPendenteError();

@@ -10,7 +10,9 @@ import { puxarAtualizacoes } from "@/lib/db/sync";
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
   const ehAdmin = tecnico?.papel === "ADMIN";
-  const podeVer = tecnico?.papel === "ADMIN" || tecnico?.papel === "VISUALIZADOR";
+  // Técnico e visualizador também podem ver — é tudo leitura (prazos,
+  // análise, histórico). Só a gestão de técnicos fica restrita a admin.
+  const podeVer = !!tecnico;
 
   useEffect(() => {
     puxarAtualizacoes().catch(() => {});
