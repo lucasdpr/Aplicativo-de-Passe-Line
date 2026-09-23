@@ -36,15 +36,18 @@ export function SidebarAdmin({
   const [pendentes, setPendentes] = useState(0);
 
   useEffect(() => {
+    if (!ehAdmin) return;
     listarTecnicos().then((tecnicos) => {
       setPendentes(tecnicos.filter((t) => !t.aprovado).length);
     });
-  }, []);
+  }, [ehAdmin]);
 
   const secoes: ItemNav[] = [
     { href: "/admin", label: "Prazos de medição", icon: AlarmClock },
     { href: "/admin/analise", label: "Análise e variação", icon: LineChart },
-    { href: "/admin/tecnicos", label: "Técnicos", icon: Users, contador: pendentes },
+    ...(ehAdmin
+      ? [{ href: "/admin/tecnicos", label: "Técnicos", icon: Users, contador: pendentes }]
+      : []),
     { href: "/admin/historico", label: "Histórico completo", icon: History },
   ];
 
@@ -71,15 +74,17 @@ export function SidebarAdmin({
         </div>
       </div>
 
-      <div className="px-3 pb-3">
-        <Link
-          href="/"
-          className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold"
-          style={{ background: "var(--primary)", color: "#04201c" }}
-        >
-          <ClipboardList size={16} /> Fazer medição
-        </Link>
-      </div>
+      {ehAdmin && (
+        <div className="px-3 pb-3">
+          <Link
+            href="/"
+            className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold"
+            style={{ background: "var(--primary)", color: "#04201c" }}
+          >
+            <ClipboardList size={16} /> Fazer medição
+          </Link>
+        </div>
+      )}
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3">
         {secoes.map((s) => {
@@ -148,13 +153,15 @@ export function SidebarAdmin({
           <Menu size={16} />
           {ehAdmin ? "Painel Admin" : "Painel de Visualização"}
         </button>
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold"
-          style={{ background: "var(--primary)", color: "#04201c" }}
-        >
-          <ClipboardList size={14} /> Fazer medição
-        </Link>
+        {ehAdmin && (
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold"
+            style={{ background: "var(--primary)", color: "#04201c" }}
+          >
+            <ClipboardList size={14} /> Fazer medição
+          </Link>
+        )}
       </div>
 
       {abertoMobile && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { KeyRound, Trash2, Users, UserCheck } from "lucide-react";
 import {
   useAuthStore,
@@ -19,6 +20,7 @@ const NOME_PAPEL: Record<PapelTecnico, string> = {
 };
 
 export default function AdminTecnicosPage() {
+  const router = useRouter();
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
   const ehAdmin = tecnico?.papel === "ADMIN";
 
@@ -30,8 +32,16 @@ export default function AdminTecnicosPage() {
   }, []);
 
   useEffect(() => {
+    // Gestão de técnicos (aprovar, trocar papel, resetar PIN, excluir) é
+    // coisa de admin — visualizador não tem o que fazer aqui.
+    if (tecnico && !ehAdmin) router.replace("/admin");
+  }, [tecnico, ehAdmin, router]);
+
+  useEffect(() => {
     recarregarTecnicos();
   }, [recarregarTecnicos]);
+
+  if (tecnico && !ehAdmin) return null;
 
   async function handleResetarPin(id: string, nome: string) {
     const novoPin = window.prompt(
