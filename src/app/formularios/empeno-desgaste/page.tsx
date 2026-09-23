@@ -24,6 +24,12 @@ import {
   formatarValorDigitado,
   paraValorDigitado,
 } from "@/lib/tabelaCampos";
+import { carregarRascunho, limparRascunho, salvarRascunho } from "@/lib/rascunho";
+
+interface RascunhoEmpenoDesgaste {
+  header: SessaoHeaderValue;
+  linhas: LinhaEmpenoDesgaste[];
+}
 
 function linhasIniciais(): LinhaEmpenoDesgaste[] {
   const linhas: LinhaEmpenoDesgaste[] = [];
@@ -65,9 +71,16 @@ function EmpenoDesgasteForm() {
   const searchParams = useSearchParams();
   const sessaoId = searchParams.get("sessaoId");
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
-  const [header, setHeader] = useState<SessaoHeaderValue>(novaSessaoHeader());
+  const chaveRascunho = `empeno-desgaste:${sessaoId ?? "novo"}`;
+  const [header, setHeader] = useState<SessaoHeaderValue>(
+    () =>
+      carregarRascunho<RascunhoEmpenoDesgaste>(chaveRascunho)?.header ??
+      novaSessaoHeader()
+  );
   const [linhas, setLinhas] = useState<LinhaEmpenoDesgaste[]>(
-    linhasIniciais()
+    () =>
+      carregarRascunho<RascunhoEmpenoDesgaste>(chaveRascunho)?.linhas ??
+      linhasIniciais()
   );
   const [carregando, setCarregando] = useState(!!sessaoId);
   const [headerOriginal, setHeaderOriginal] =
@@ -90,7 +103,6 @@ function EmpenoDesgasteForm() {
         .equals(sessaoId)
         .toArray();
       if (sessao) {
-        setHeader(headerDeSessao(sessao));
         setHeaderOriginal(headerDeSessao(sessao));
         setSincronizadoEmOriginal(sessao.sincronizadoEm);
       }
@@ -99,11 +111,25 @@ function EmpenoDesgasteForm() {
         const salva = linhasSalvas.find((x) => x.nCad === l.nCad);
         return salva ? { ...l, ...salva } : l;
       });
-      setLinhas(mesclado);
       setLinhasOriginais(mesclado.map((l) => ({ ...l })));
+
+      const rascunho = carregarRascunho<RascunhoEmpenoDesgaste>(chaveRascunho);
+      if (rascunho) {
+        setHeader(rascunho.header);
+        setLinhas(rascunho.linhas);
+      } else if (sessao) {
+        setHeader(headerDeSessao(sessao));
+        setLinhas(mesclado);
+      }
       setCarregando(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessaoId]);
+
+  function handleHeaderChange(novoHeader: SessaoHeaderValue) {
+    setHeader(novoHeader);
+    salvarRascunho<RascunhoEmpenoDesgaste>(chaveRascunho, { header: novoHeader, linhas });
+  }
 
   function setValor(
     nCad: number,
@@ -118,9 +144,11 @@ function EmpenoDesgasteForm() {
     if (typeof valor === "number") {
       valor = clamparNumero(valor, 0, 999.99);
     }
-    setLinhas((prev) =>
-      prev.map((l) => (l.nCad === nCad ? { ...l, [campo]: valor } : l))
+    const novasLinhas = linhas.map((l) =>
+      l.nCad === nCad ? { ...l, [campo]: valor } : l
     );
+    setLinhas(novasLinhas);
+    salvarRascunho<RascunhoEmpenoDesgaste>(chaveRascunho, { header, linhas: novasLinhas });
     setSalvo(false);
   }
 
@@ -197,6 +225,7 @@ function EmpenoDesgasteForm() {
         );
       }
 
+      limparRascunho(chaveRascunho);
       setSalvo(true);
       sincronizarPendentes().catch(() => {});
       setTimeout(() => router.push("/historico"), 900);
@@ -242,7 +271,7 @@ function EmpenoDesgasteForm() {
         </div>
       </div>
 
-      <SessaoHeader value={header} onChange={setHeader} />
+      <SessaoHeader value={header} onChange={handleHeaderChange} />
 
       <div className="surface scrollbar-thin max-h-[60vh] overflow-auto">
         <table className="table-industrial min-w-full text-sm">

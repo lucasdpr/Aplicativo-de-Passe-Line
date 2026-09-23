@@ -17,6 +17,7 @@ import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
 import { clamparNumero, formatarValorDigitado, paraValorDigitado } from "@/lib/tabelaCampos";
+import { carregarRascunho, limparRascunho, salvarRascunho } from "@/lib/rascunho";
 import {
   SEGMENTOS_PADRAO,
   SEGMENTOS_MCC4,
@@ -26,6 +27,11 @@ import {
   type Maquina,
   type SessaoMedicao,
 } from "@/types";
+
+interface RascunhoPassLineSegmentos {
+  header: SessaoHeaderValue;
+  leituras: LeituraSegmento[];
+}
 
 const POSICOES_INICIAIS = 4;
 const LADOS: { key: LadoSegmento; label: string }[] = [
@@ -80,8 +86,16 @@ function PassLineSegmentosForm() {
   const searchParams = useSearchParams();
   const sessaoId = searchParams.get("sessaoId");
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
-  const [header, setHeader] = useState<SessaoHeaderValue>(novaSessaoHeader());
-  const [leituras, setLeituras] = useState<LeituraSegmento[]>(estadoInicial(novaSessaoHeader().maquina));
+  const chaveRascunho = `pass-line-segmentos:${sessaoId ?? "novo"}`;
+  const [header, setHeader] = useState<SessaoHeaderValue>(
+    () =>
+      carregarRascunho<RascunhoPassLineSegmentos>(chaveRascunho)?.header ??
+      novaSessaoHeader()
+  );
+  const [leituras, setLeituras] = useState<LeituraSegmento[]>(() => {
+    const rascunho = carregarRascunho<RascunhoPassLineSegmentos>(chaveRascunho);
+    return rascunho?.leituras ?? estadoInicial(rascunho?.header.maquina ?? "MCC2");
+  });
   const [carregando, setCarregando] = useState(!!sessaoId);
   const [headerOriginal, setHeaderOriginal] =
     useState<SessaoHeaderValue | null>(null);
@@ -103,7 +117,6 @@ function PassLineSegmentosForm() {
         .equals(sessaoId)
         .toArray();
       if (sessao) {
-        setHeader(headerDeSessao(sessao));
         setHeaderOriginal(headerDeSessao(sessao));
         setSincronizadoEmOriginal(sessao.sincronizadoEm);
       }
@@ -120,22 +133,36 @@ function PassLineSegmentosForm() {
         return salva ? { ...l, valor: salva.valor } : l;
       });
       const final = [...mesclado, ...extras];
-      setLeituras(final);
       setLeiturasOriginais(final.map((l) => ({ ...l })));
+
+      const rascunho = carregarRascunho<RascunhoPassLineSegmentos>(chaveRascunho);
+      if (rascunho) {
+        setHeader(rascunho.header);
+        setLeituras(rascunho.leituras);
+      } else if (sessao) {
+        setHeader(headerDeSessao(sessao));
+        setLeituras(final);
+      }
       setCarregando(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessaoId]);
 
   // Sessão nova: a lista de segmentos depende da máquina (MCC4 é diferente
   // das demais) — reseta as leituras se o técnico trocar a máquina antes de
   // preencher. Não mexe numa sessão que já está sendo editada.
   function handleHeaderChange(novoHeader: SessaoHeaderValue) {
+    let novasLeituras = leituras;
     if (!sessaoId && novoHeader.maquina !== header.maquina) {
-      const nova = estadoInicial(novoHeader.maquina);
-      setLeituras(nova);
-      setLeiturasOriginais(nova.map((l) => ({ ...l })));
+      novasLeituras = estadoInicial(novoHeader.maquina);
+      setLeituras(novasLeituras);
+      setLeiturasOriginais(novasLeituras.map((l) => ({ ...l })));
     }
     setHeader(novoHeader);
+    salvarRascunho<RascunhoPassLineSegmentos>(chaveRascunho, {
+      header: novoHeader,
+      leituras: novasLeituras,
+    });
   }
 
   function setValor(
@@ -147,36 +174,35 @@ function PassLineSegmentosForm() {
     const valorDigitado = paraValorDigitado(valorTexto, 2);
     const valor =
       valorDigitado === undefined ? undefined : clamparNumero(valorDigitado, -9.99, 9.99);
-    setLeituras((prev) =>
-      prev.map((l) =>
-        l.segmento === segmento && l.lado === lado && l.posicao === posicao
-          ? { ...l, valor }
-          : l
-      )
+    const novasLeituras = leituras.map((l) =>
+      l.segmento === segmento && l.lado === lado && l.posicao === posicao
+        ? { ...l, valor }
+        : l
     );
+    setLeituras(novasLeituras);
+    salvarRascunho<RascunhoPassLineSegmentos>(chaveRascunho, { header, leituras: novasLeituras });
     setSalvo(false);
   }
 
   function adicionarPosicao(segmento: string, lado: LadoSegmento) {
-    setLeituras((prev) => {
-      const existentes = prev.filter(
-        (l) => l.segmento === segmento && l.lado === lado
-      );
-      const proximaPosicao =
-        existentes.length > 0
-          ? Math.max(...existentes.map((l) => l.posicao)) + 1
-          : 1;
-      return [...prev, { segmento, lado, posicao: proximaPosicao }];
-    });
+    const existentes = leituras.filter(
+      (l) => l.segmento === segmento && l.lado === lado
+    );
+    const proximaPosicao =
+      existentes.length > 0
+        ? Math.max(...existentes.map((l) => l.posicao)) + 1
+        : 1;
+    const novasLeituras = [...leituras, { segmento, lado, posicao: proximaPosicao }];
+    setLeituras(novasLeituras);
+    salvarRascunho<RascunhoPassLineSegmentos>(chaveRascunho, { header, leituras: novasLeituras });
   }
 
   function removerPosicao(segmento: string, lado: LadoSegmento, posicao: number) {
-    setLeituras((prev) =>
-      prev.filter(
-        (l) =>
-          !(l.segmento === segmento && l.lado === lado && l.posicao === posicao)
-      )
+    const novasLeituras = leituras.filter(
+      (l) => !(l.segmento === segmento && l.lado === lado && l.posicao === posicao)
     );
+    setLeituras(novasLeituras);
+    salvarRascunho<RascunhoPassLineSegmentos>(chaveRascunho, { header, leituras: novasLeituras });
   }
 
   async function salvar() {
@@ -252,6 +278,7 @@ function PassLineSegmentosForm() {
         );
       }
 
+      limparRascunho(chaveRascunho);
       setSalvo(true);
       sincronizarPendentes().catch(() => {});
       setTimeout(() => router.push("/historico"), 900);
