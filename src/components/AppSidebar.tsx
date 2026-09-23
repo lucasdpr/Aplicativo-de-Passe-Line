@@ -7,6 +7,7 @@ import {
   AlarmClock,
   ClipboardList,
   History,
+  LineChart,
   Menu,
   ShieldCheck,
   X,
@@ -28,7 +29,8 @@ export function AppSidebar({ papel }: { papel?: PapelTecnico }) {
     ...(ehVisualizador ? [] : [{ href: "/", label: "Fazer medição", icon: ClipboardList }]),
     { href: "/historico", label: "Histórico", icon: History },
     { href: "/prazos", label: "Prazos", icon: AlarmClock },
-    ...(papel === "ADMIN" || papel === "VISUALIZADOR"
+    { href: "/admin/analise", label: "Análise e variação", icon: LineChart },
+    ...(papel === "ADMIN"
       ? [{ href: "/admin", label: "Painel admin", icon: ShieldCheck }]
       : []),
   ];
