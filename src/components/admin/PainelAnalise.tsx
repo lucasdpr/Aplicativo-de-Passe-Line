@@ -55,6 +55,13 @@ function corDaVariacao(combo: AnaliseCombo): string {
   return piorando ? "#fca5a5" : "var(--success)";
 }
 
+const SIGLA_FICHA: Record<AnaliseCombo["tipoFicha"], string> = {
+  PASS_LINE_DESEMPENADEIRA: "PL-D",
+  GAP: "GAP",
+  EMPENO_DESGASTE: "E/D",
+  PASS_LINE_SEGMENTOS: "PL-S",
+};
+
 function textoTendencia(combo: AnaliseCombo): string {
   if (combo.tendencia === "estavel") return "Estável — sem variação relevante entre medições";
   if (combo.tendencia === "melhorando") return "Melhorando a cada medição";
@@ -164,7 +171,7 @@ export function PainelAnalise() {
       comDados
         .filter((c) => c.variacaoAbsoluta !== null)
         .map((c) => ({
-          nome: c.label.replace(" — ", "\n"),
+          nome: `${SIGLA_FICHA[c.tipoFicha]} ${c.maquina}-${c.veio}`,
           chave: `${c.tipoFicha}|${c.maquina}|${c.veio}`,
           variacao: Number((c.variacaoAbsoluta ?? 0).toFixed(3)),
           cor: corDaVariacao(c),
@@ -529,16 +536,19 @@ export function PainelAnalise() {
             <h3 className="mb-3 text-xs font-semibold text-[var(--text-dim)]">
               Comparação de variação entre equipamentos
             </h3>
-            <div style={{ width: "100%", height: 200 }}>
+            <div style={{ width: "100%", height: 260 }}>
               <ResponsiveContainer>
-                <BarChart data={dadosComparacao} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                <BarChart data={dadosComparacao} margin={{ top: 4, right: 8, left: -16, bottom: 48 }}>
                   <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="nome"
-                    tick={{ fill: "var(--text-faint)", fontSize: 9 }}
+                    tick={{ fill: "var(--text-faint)", fontSize: 10 }}
                     axisLine={{ stroke: "var(--border)" }}
                     tickLine={false}
                     interval={0}
+                    angle={-40}
+                    textAnchor="end"
+                    height={60}
                   />
                   <YAxis
                     tick={{ fill: "var(--text-faint)", fontSize: 11 }}
