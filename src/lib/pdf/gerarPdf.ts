@@ -348,9 +348,12 @@ function desenharTabela(
   ctx.y -= 12;
 }
 
+export type ModoPdfGap = "TUDO" | "ATUALIZADO";
+
 export async function gerarPdfSessao(
   sessao: SessaoMedicao,
-  linhas: LinhasPorTipo[TipoFicha]
+  linhas: LinhasPorTipo[TipoFicha],
+  modoGap: ModoPdfGap = "TUDO"
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -388,35 +391,64 @@ export async function gerarPdfSessao(
     }
     case "GAP": {
       const dados = linhas as LinhaGap[];
-      desenharTabela(
-        ctx,
-        [
-          { header: "Nº CAD", width: 40 },
-          { header: "GAP", width: 45 },
-          { header: "TOL. ±", width: 40 },
-          { header: "1ª ACIONADO", width: 60 },
-          { header: "1ª CENTRO", width: 55 },
-          { header: "1ª NÃO ACIO.", width: 60 },
-          { header: "AJUSTE ACIO.", width: 60 },
-          { header: "AJUSTE NÃO ACIO.", width: 65 },
-          { header: "2ª ACIONADO", width: 60 },
-          { header: "2ª CENTRO", width: 55 },
-          { header: "2ª NÃO ACIO.", width: 60 },
-        ],
-        dados.map((l) => [
-          String(l.nCad),
-          fmt(l.gapNominal),
-          fmt(l.toleranciaMm),
-          fmt(l.primeiraAcionado),
-          fmt(l.primeiraCentro),
-          fmt(l.primeiraNaoAcionado),
-          fmtTexto(l.ajusteAcionado),
-          fmtTexto(l.ajusteNaoAcionado),
-          fmt(l.segundaAcionado),
-          fmt(l.segundaCentro),
-          fmt(l.segundaNaoAcionado),
-        ])
-      );
+      if (modoGap === "ATUALIZADO") {
+        // Valor atualizado por Nº CAD: usa a segunda medida quando ela foi
+        // registrada (medida final, depois do ajuste); só cai pra primeira
+        // medida se a segunda ainda não foi preenchida.
+        const atualizado = (
+          segunda: number | null | undefined,
+          primeira: number | null | undefined
+        ) => (segunda !== null && segunda !== undefined ? segunda : primeira);
+        desenharTabela(
+          ctx,
+          [
+            { header: "Nº CAD", width: 55 },
+            { header: "GAP", width: 55 },
+            { header: "TOL. ±", width: 55 },
+            { header: "ACIONADO (ATUALIZADO)", width: 110 },
+            { header: "CENTRO (ATUALIZADO)", width: 105 },
+            { header: "NÃO ACIONADO (ATUALIZADO)", width: 120 },
+          ],
+          dados.map((l) => [
+            String(l.nCad),
+            fmt(l.gapNominal),
+            fmt(l.toleranciaMm),
+            fmt(atualizado(l.segundaAcionado, l.primeiraAcionado)),
+            fmt(atualizado(l.segundaCentro, l.primeiraCentro)),
+            fmt(atualizado(l.segundaNaoAcionado, l.primeiraNaoAcionado)),
+          ])
+        );
+      } else {
+        desenharTabela(
+          ctx,
+          [
+            { header: "Nº CAD", width: 40 },
+            { header: "GAP", width: 45 },
+            { header: "TOL. ±", width: 40 },
+            { header: "1ª ACIONADO", width: 60 },
+            { header: "1ª CENTRO", width: 55 },
+            { header: "1ª NÃO ACIO.", width: 60 },
+            { header: "AJUSTE ACIO.", width: 60 },
+            { header: "AJUSTE NÃO ACIO.", width: 65 },
+            { header: "2ª ACIONADO", width: 60 },
+            { header: "2ª CENTRO", width: 55 },
+            { header: "2ª NÃO ACIO.", width: 60 },
+          ],
+          dados.map((l) => [
+            String(l.nCad),
+            fmt(l.gapNominal),
+            fmt(l.toleranciaMm),
+            fmt(l.primeiraAcionado),
+            fmt(l.primeiraCentro),
+            fmt(l.primeiraNaoAcionado),
+            fmtTexto(l.ajusteAcionado),
+            fmtTexto(l.ajusteNaoAcionado),
+            fmt(l.segundaAcionado),
+            fmt(l.segundaCentro),
+            fmt(l.segundaNaoAcionado),
+          ])
+        );
+      }
       break;
     }
     case "EMPENO_DESGASTE": {

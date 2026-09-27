@@ -110,10 +110,12 @@ export default function HistoricoPage() {
     }
   }
 
-  async function gerarPdf(sessaoId: string) {
+  async function gerarPdf(sessaoId: string, modo: "TUDO" | "ATUALIZADO" = "TUDO") {
     setGerandoId(sessaoId);
     try {
-      const resp = await fetch(`/api/pdf?sessaoId=${sessaoId}`);
+      const query =
+        modo === "ATUALIZADO" ? `sessaoId=${sessaoId}&modo=ATUALIZADO` : `sessaoId=${sessaoId}`;
+      const resp = await fetch(`/api/pdf?${query}`);
       if (!resp.ok) {
         const erro = await resp.json().catch(() => null);
         alert(erro?.error ?? "Não foi possível gerar o PDF.");
@@ -217,7 +219,7 @@ export default function HistoricoPage() {
                     sessao={s}
                     ehAdmin={tecnico?.papel === "ADMIN"}
                     gerandoId={gerandoId}
-                    onGerarPdf={gerarPdf}
+                    onGerarPdf={(id, modo) => gerarPdf(id, modo)}
                     onExcluir={handleExcluirSessao}
                   />
                 ))}
@@ -242,7 +244,7 @@ function CartaoSessao({
   sessao: SessaoMedicao;
   ehAdmin: boolean;
   gerandoId: string | null;
-  onGerarPdf: (id: string) => void;
+  onGerarPdf: (id: string, modo?: "TUDO" | "ATUALIZADO") => void;
   onExcluir: (s: SessaoMedicao) => void;
 }) {
   const info = FICHA_INFO[s.tipoFicha];
@@ -278,11 +280,13 @@ function CartaoSessao({
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
-            onClick={() => onGerarPdf(s.id)}
+            onClick={() => onGerarPdf(s.id, "TUDO")}
             disabled={!sincronizado || gerandoId === s.id}
             title={
               sincronizado
-                ? "Gerar PDF oficial"
+                ? s.tipoFicha === "GAP"
+                  ? "PDF com todos os campos (1ª medida, ajuste e 2ª medida)"
+                  : "Gerar PDF oficial"
                 : "Disponível após sincronizar com o servidor"
             }
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
@@ -296,8 +300,27 @@ function CartaoSessao({
             ) : (
               <FileDown size={13} />
             )}
-            Gerar PDF
+            {s.tipoFicha === "GAP" ? "Ver tudo" : "Gerar PDF"}
           </button>
+          {s.tipoFicha === "GAP" && (
+            <button
+              onClick={() => onGerarPdf(s.id, "ATUALIZADO")}
+              disabled={!sincronizado || gerandoId === s.id}
+              title="PDF com o valor atualizado por Nº CAD: usa a 2ª medida quando ela já foi feita, senão a 1ª"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
+              style={{
+                background: "var(--primary-soft)",
+                color: "var(--primary-strong)",
+              }}
+            >
+              {gerandoId === s.id ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <FileDown size={13} />
+              )}
+              Atualizado
+            </button>
+          )}
           {ehAdmin && (
             <button
               onClick={() => onExcluir(s)}
