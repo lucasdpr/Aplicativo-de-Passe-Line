@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { gerarPdfSessao } from "@/lib/pdf/gerarPdf";
+import { gerarPdfSessao, type ModoPdfGap } from "@/lib/pdf/gerarPdf";
 import type {
   SessaoMedicao,
   LinhaPassLineDesempenadeira,
@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
   if (!sessaoId) {
     return NextResponse.json({ error: "sessaoId é obrigatório" }, { status: 400 });
   }
+  const modoGap: ModoPdfGap =
+    req.nextUrl.searchParams.get("modo") === "ATUALIZADO" ? "ATUALIZADO" : "TUDO";
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -79,13 +81,15 @@ export async function GET(req: NextRequest) {
 
   const pdfBytes = await gerarPdfSessao(
     sessao,
-    linhas as unknown as Parameters<typeof gerarPdfSessao>[1]
+    linhas as unknown as Parameters<typeof gerarPdfSessao>[1],
+    modoGap
   );
 
+  const sufixoModo = sessao.tipoFicha === "GAP" && modoGap === "ATUALIZADO" ? "-atualizado" : "";
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="pass-line-${sessao.tipoFicha.toLowerCase()}-${sessao.data}.pdf"`,
+      "Content-Disposition": `inline; filename="pass-line-${sessao.tipoFicha.toLowerCase()}-${sessao.data}${sufixoModo}.pdf"`,
     },
   });
 }
