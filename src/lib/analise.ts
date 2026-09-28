@@ -321,7 +321,8 @@ export async function buscarAnaliseCombos(
     const somaAnterior = (atual.valor ?? 0) * atual.total;
     const novoTotal = atual.total + medidos.length;
     const novaSoma = somaAnterior + medidos.reduce((a, b) => a + b, 0);
-    const foraAqui = medidos.filter((v) => v > tolerancia).length;
+    // Folga pra erro de ponto flutuante (260,2 - 260,5 dá 0,30000000000001).
+    const foraAqui = medidos.filter((v) => v > tolerancia + 1e-9).length;
     agregadoPorSessao.set(sessaoId, {
       valor: novaSoma / novoTotal,
       fora: atual.fora + foraAqui,
