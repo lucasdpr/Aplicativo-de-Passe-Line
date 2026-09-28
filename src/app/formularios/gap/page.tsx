@@ -16,7 +16,7 @@ import { db } from "@/lib/db/dexie";
 import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
-import { N_CAD_RANGE, type LinhaGap, type SessaoMedicao } from "@/types";
+import { N_CAD_RANGE_GAP, type LinhaGap, type SessaoMedicao } from "@/types";
 import {
   agruparCampos,
   clamparNumero,
@@ -80,15 +80,13 @@ const GAP_NOMINAL_POR_N_CAD: Record<number, number> = {
 };
 
 function gapNominalPadrao(nCad: number): number {
-  // A ficha impressa mostrada vai até o Nº CAD 75 — pros CADs seguintes
-  // (76–79), usa o último valor confirmado até a ficha completa ser
-  // conferida (é só um ponto de partida, dá pra ajustar linha a linha).
+  // Sessões antigas podem ter linhas depois da 75 (a ficha ia até a 79).
   return GAP_NOMINAL_POR_N_CAD[nCad] ?? 256.0;
 }
 
 function linhasIniciais(): LinhaGap[] {
   const linhas: LinhaGap[] = [];
-  for (let n = N_CAD_RANGE.min; n <= N_CAD_RANGE.max; n++) {
+  for (let n = N_CAD_RANGE_GAP.min; n <= N_CAD_RANGE_GAP.max; n++) {
     linhas.push({
       nCad: n,
       gapNominal: gapNominalPadrao(n),
@@ -115,6 +113,58 @@ const GRUPOS_CAMPOS_MEDIDA = agruparCampos(CAMPOS_MEDIDA);
 // não é um valor em mm, por isso é texto livre, não número.
 const CAMPOS_TEXTO = new Set<keyof LinhaGap>(["ajusteAcionado", "ajusteNaoAcionado"]);
 
+const CAMPOS_PRIMEIRA: (keyof LinhaGap)[] = [
+  "primeiraAcionado",
+  "primeiraCentro",
+  "primeiraNaoAcionado",
+];
+
+/** Valor já tem a casa decimal digitada (ex.: "261,5") — a medida está completa. */
+const MEDIDA_COMPLETA = new RegExp(`[.,]\\d{${CASAS_DECIMAIS_GAP}}$`);
+
+function temMedida(l: LinhaGap) {
+  return CAMPOS_MEDIDA.some((c) => l[c.key] !== undefined);
+}
+
+/**
+ * Tira as linhas vazias depois da cadeira 75 (rascunhos e sessões de quando a
+ * ficha ia até a 79). Linha que já tem medida fica, pra não perder dado.
+ */
+function normalizarLinhas(linhas: LinhaGap[]): LinhaGap[] {
+  return linhas.filter((l) => l.nCad <= N_CAD_RANGE_GAP.max || temMedida(l));
+}
+
+/**
+ * Tolerância é sempre 0,X0 — só o primeiro decimal muda, o segundo é sempre 0.
+ * Por isso o campo guarda um único dígito: digitar "5" vira 0,50.
+ */
+function textoTolerancia(t: number | undefined) {
+  return t === undefined || Number.isNaN(t) ? "" : t.toFixed(2).replace(".", ",");
+}
+
+function lerTolerancia(texto: string, atual: number | undefined): number | undefined | null {
+  const exibido = textoTolerancia(atual);
+  // Descobre o trecho que a pessoa acabou de digitar, em qualquer posição do
+  // campo (comparando o começo e o fim com o que estava sendo exibido).
+  let ini = 0;
+  while (ini < texto.length && ini < exibido.length && texto[ini] === exibido[ini]) ini++;
+  let fim = 0;
+  while (
+    fim < texto.length - ini &&
+    fim < exibido.length - ini &&
+    texto[texto.length - 1 - fim] === exibido[exibido.length - 1 - fim]
+  ) {
+    fim++;
+  }
+  const novo = texto.slice(ini, texto.length - fim);
+  // Apagou (backspace) — limpa o campo pra digitar de novo.
+  if (novo === "" && texto.length < exibido.length) return undefined;
+  const digito = novo.replace(/[^1-9]/g, "").slice(-1);
+  // Só digitou "0" ou vírgula: espera o dígito que importa.
+  if (!digito) return null;
+  return Number(digito) / 10;
+}
+
 function foraDaTolerancia(
   campo: string,
   valor: number | undefined,
@@ -123,7 +173,18 @@ function foraDaTolerancia(
 ) {
   if (valor === undefined || Number.isNaN(valor)) return false;
   if (campo.toLowerCase().includes("ajuste")) return false; // ajuste é texto, não medida
-  return Math.abs(valor - gapNominal) > tolerancia;
+  // Folga pra erro de ponto flutuante (260,2 - 260,5 dá 0,30000000000001).
+  return Math.abs(valor - gapNominal) > tolerancia + 1e-9;
+}
+
+function primeiraMedidaDentroDaTolerancia(l: LinhaGap) {
+  return CAMPOS_PRIMEIRA.every((campo) => {
+    const v = l[campo];
+    return (
+      typeof v === "number" &&
+      !foraDaTolerancia(campo, v, l.gapNominal, l.toleranciaMm)
+    );
+  });
 }
 
 function headerDeSessao(s: SessaoMedicao): SessaoHeaderValue {
@@ -147,7 +208,10 @@ function GapForm() {
     () => carregarRascunho<RascunhoGap>(chaveRascunho)?.header ?? novaSessaoHeader()
   );
   const [linhas, setLinhas] = useState<LinhaGap[]>(
-    () => carregarRascunho<RascunhoGap>(chaveRascunho)?.linhas ?? linhasIniciais()
+    () => {
+      const rascunho = carregarRascunho<RascunhoGap>(chaveRascunho)?.linhas;
+      return rascunho ? normalizarLinhas(rascunho) : linhasIniciais();
+    }
   );
   const [carregando, setCarregando] = useState(!!sessaoId);
   const [headerOriginal, setHeaderOriginal] =
@@ -179,6 +243,11 @@ function GapForm() {
         const salva = linhasSalvas.find((x) => x.nCad === l.nCad);
         return salva ? { ...l, ...salva } : l;
       });
+      // Sessões antigas podem ter medida depois da cadeira 75 — mantém.
+      const extras = linhasSalvas
+        .filter((x) => x.nCad > N_CAD_RANGE_GAP.max)
+        .sort((a, b) => a.nCad - b.nCad);
+      mesclado.push(...extras);
       setLinhasOriginais(mesclado.map((l) => ({ ...l })));
 
       // Se tiver um rascunho local (edição que não chegou a ser salva),
@@ -186,7 +255,7 @@ function GapForm() {
       const rascunho = carregarRascunho<RascunhoGap>(chaveRascunho);
       if (rascunho) {
         setHeader(rascunho.header);
-        setLinhas(rascunho.linhas);
+        setLinhas(normalizarLinhas(rascunho.linhas));
       } else if (sessao) {
         setHeader(headerDeSessao(sessao));
         setLinhas(mesclado);
@@ -204,6 +273,60 @@ function GapForm() {
   function handleHeaderChange(novoHeader: SessaoHeaderValue) {
     setHeader(novoHeader);
     salvarRascunho<RascunhoGap>(chaveRascunho, { header: novoHeader, linhas });
+  }
+
+  function atualizarLinhas(novasLinhas: LinhaGap[]) {
+    setLinhas(novasLinhas);
+    salvarRascunho<RascunhoGap>(chaveRascunho, { header, linhas: novasLinhas });
+    setSalvo(false);
+  }
+
+  function setTolerancia(nCad: number, texto: string) {
+    const linha = linhas.find((l) => l.nCad === nCad);
+    if (!linha) return;
+    const nova = lerTolerancia(texto, linha.toleranciaMm);
+    if (nova === null) return;
+    atualizarLinhas(
+      linhas.map((l) =>
+        l.nCad === nCad ? { ...l, toleranciaMm: nova as number } : l
+      )
+    );
+  }
+
+  function focarCampo(nCad: number, campo: keyof LinhaGap) {
+    const el = document.querySelector<HTMLInputElement>(
+      `input[data-celula="${chaveCelula(nCad, campo)}"]`
+    );
+    el?.focus();
+    el?.select();
+  }
+
+  /**
+   * Se as 3 medidas da 1ª medição estão dentro da tolerância, não precisa de
+   * ajuste nem de 2ª medição — pula direto pra cadeira de baixo.
+   */
+  function pularSeNaoPrecisaAjuste(linha: LinhaGap): boolean {
+    if (!primeiraMedidaDentroDaTolerancia(linha)) return false;
+    const idx = linhas.findIndex((l) => l.nCad === linha.nCad);
+    const proxima = linhas[idx + 1];
+    if (proxima) focarCampo(proxima.nCad, "primeiraAcionado");
+    else (document.activeElement as HTMLElement | null)?.blur();
+    return true;
+  }
+
+  function handleEnter(nCad: number, campo: keyof LinhaGap) {
+    const linha = linhas.find((l) => l.nCad === nCad);
+    if (!linha) return;
+    if (CAMPOS_PRIMEIRA.includes(campo) && pularSeNaoPrecisaAjuste(linha)) return;
+    const idx = CAMPOS_MEDIDA.findIndex((c) => c.key === campo);
+    const proximo = CAMPOS_MEDIDA[idx + 1];
+    if (proximo) {
+      focarCampo(nCad, proximo.key);
+    } else {
+      const idxLinha = linhas.findIndex((l) => l.nCad === nCad);
+      const proxima = linhas[idxLinha + 1];
+      if (proxima) focarCampo(proxima.nCad, "primeiraAcionado");
+    }
   }
 
   function setValor(nCad: number, campo: keyof LinhaGap, valorTexto: string) {
@@ -238,9 +361,12 @@ function GapForm() {
     const novasLinhas = linhas.map((l) =>
       l.nCad === nCad ? { ...l, [campo]: valor } : l
     );
-    setLinhas(novasLinhas);
-    salvarRascunho<RascunhoGap>(chaveRascunho, { header, linhas: novasLinhas });
-    setSalvo(false);
+    atualizarLinhas(novasLinhas);
+
+    if (CAMPOS_PRIMEIRA.includes(campo) && MEDIDA_COMPLETA.test(texto)) {
+      const linha = novasLinhas.find((l) => l.nCad === nCad);
+      if (linha) pularSeNaoPrecisaAjuste(linha);
+    }
   }
 
   async function salvar() {
@@ -366,7 +492,9 @@ function GapForm() {
         style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
       >
         Nas colunas <strong>Ajuste</strong>: escreva <strong>OK</strong> se não precisou
-        ajustar, ou anote o que foi feito. Não é campo de número.
+        ajustar, ou anote o que foi feito. Não é campo de número. Se as 3 medidas
+        da <strong>1ª medição</strong> ficarem dentro da tolerância, o cursor pula
+        sozinho pra cadeira de baixo.
       </p>
 
       <div className="surface scrollbar-thin max-h-[60vh] overflow-auto">
@@ -409,13 +537,9 @@ function GapForm() {
                     type="text"
                     inputMode="decimal"
                     className="input-cell"
-                    value={
-                      textoDigitado.get(chaveCelula(l.nCad, "toleranciaMm")) ??
-                      (l.toleranciaMm !== undefined ? String(l.toleranciaMm) : "")
-                    }
-                    onChange={(e) =>
-                      setValor(l.nCad, "toleranciaMm", e.target.value)
-                    }
+                    value={textoTolerancia(l.toleranciaMm)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setTolerancia(l.nCad, e.target.value)}
                   />
                 </td>
                 {GRUPOS_CAMPOS_MEDIDA.map((g) =>
@@ -435,6 +559,8 @@ function GapForm() {
                         <input
                           type="text"
                           inputMode={ehTexto ? "text" : "decimal"}
+                          enterKeyHint="next"
+                          data-celula={chaveCelula(l.nCad, c.key)}
                           placeholder="—"
                           className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
                           value={
@@ -446,6 +572,12 @@ function GapForm() {
                           onChange={(e) =>
                             setValor(l.nCad, c.key, e.target.value)
                           }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleEnter(l.nCad, c.key);
+                            }
+                          }}
                         />
                       </td>
                     );

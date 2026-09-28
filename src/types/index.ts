@@ -122,3 +122,5 @@ export const SEGMENTOS_PADRAO = ["0", "1", "2", "3", "4", "5", "6", "D"];
 /** A MCC4 não usa "0" nem "D" — os segmentos vão de 1 a 17. */
 export const SEGMENTOS_MCC4 = Array.from({ length: 17 }, (_, i) => String(i + 1));
 export const N_CAD_RANGE = { min: 43, max: 79 };
+/** A ficha de GAP vai só até a cadeira 75 (as demais fichas vão até a 79). */
+export const N_CAD_RANGE_GAP = { min: 43, max: 75 };
