@@ -1,4 +1,5 @@
 import { db } from "@/lib/db/dexie";
+import { buscarTodas } from "@/lib/buscarTodas";
 import { supabase } from "@/lib/supabase";
 import type { SessaoMedicao, TipoFicha } from "@/types";
 
@@ -31,8 +32,49 @@ function notificarConclusao(sessao: SessaoMedicao) {
   }).catch(() => {});
 }
 
+/**
+ * Garante que só uma execução de `fn` rode por vez — nesta aba e entre
+ * abas (Web Locks, quando o navegador tem). Sem isso, duas sincronizações
+ * ao mesmo tempo (ex.: histórico abrindo junto com o SyncManager) faziam
+ * "apaga linhas + insere linhas" em dobro e duplicavam as linhas.
+ *
+ * Se já tem uma rodando, a chamada nova espera ela acabar e roda de novo
+ * (pra pegar o que foi salvo nesse meio tempo); várias chamadas nessa
+ * espera viram uma só.
+ */
+function umaPorVez<T>(nome: string, fn: () => Promise<T>): () => Promise<T> {
+  let rodando: Promise<T> | null = null;
+  let proxima: Promise<T> | null = null;
+
+  const executar = (): Promise<T> => {
+    const comTrava =
+      typeof navigator !== "undefined" && navigator.locks
+        ? (navigator.locks.request(`passline-${nome}`, fn) as Promise<T>)
+        : fn();
+    rodando = comTrava.finally(() => {
+      rodando = null;
+    });
+    return rodando;
+  };
+
+  return () => {
+    if (!rodando) return executar();
+    if (!proxima) {
+      proxima = rodando
+        .catch(() => undefined)
+        .then(() => {
+          proxima = null;
+          return executar();
+        });
+    }
+    return proxima;
+  };
+}
+
 /** Tries to push every PENDENTE_SYNC session to Supabase. Safe to call repeatedly. */
-export async function sincronizarPendentes(): Promise<{
+export const sincronizarPendentes = umaPorVez("enviar", enviarPendentes);
+
+async function enviarPendentes(): Promise<{
   enviados: number;
   falhas: number;
   erros: string[];
@@ -132,13 +174,18 @@ async function buscarLinhasRemotasEGravar(
  * Também remove localmente as sessões que sumiram no servidor (excluídas
  * a partir de outro aparelho).
  */
-export async function puxarAtualizacoes(): Promise<{ recebidos: number }> {
+export const puxarAtualizacoes = umaPorVez("puxar", puxarAtualizacoesAgora);
+
+async function puxarAtualizacoesAgora(): Promise<{ recebidos: number }> {
   if (!supabase || !navigator.onLine) return { recebidos: 0 };
 
-  const { data: indice, error } = await supabase
-    .from("sessoes_medicao")
-    .select("id, tipo_ficha, atualizado_em");
-  if (error || !indice) return { recebidos: 0 };
+  const cliente = supabase;
+  // Em páginas: com mais de 1000 medições, a lista vinha cortada e o código
+  // abaixo apagava deste aparelho as que "não existiam" no servidor.
+  const { data: indice, error } = await buscarTodas<Record<string, unknown>>((de, ate) =>
+    cliente.from("sessoes_medicao").select("id, tipo_ficha, atualizado_em").order("id").range(de, ate)
+  );
+  if (error) return { recebidos: 0 };
 
   const idsRemotos = new Set(indice.map((r) => r.id as string));
 
@@ -217,11 +264,9 @@ export async function excluirSessao(sessao: SessaoMedicao) {
     );
   }
 
-  const linhasTable = TABELA_LOCAL_POR_TIPO[sessao.tipoFicha];
-  await linhasTable.where("sessaoId").equals(sessao.id).delete();
-  await db.sessoes.delete(sessao.id);
-  await db.edicoes.where("sessaoId").equals(sessao.id).delete();
-
+  // Apaga primeiro no servidor e só depois aqui: se o servidor recusar
+  // (sem permissão, erro), a medição continua aparecendo em vez de sumir
+  // daqui e voltar sozinha na próxima sincronização.
   if (navigator.onLine) {
     const resp = await fetch(`/api/sessoes?id=${sessao.id}`, { method: "DELETE" });
     if (!resp.ok) {
@@ -229,4 +274,9 @@ export async function excluirSessao(sessao: SessaoMedicao) {
       throw new Error(corpo.mensagem ?? corpo.error ?? "Falha ao excluir no servidor");
     }
   }
+
+  const linhasTable = TABELA_LOCAL_POR_TIPO[sessao.tipoFicha];
+  await linhasTable.where("sessaoId").equals(sessao.id).delete();
+  await db.sessoes.delete(sessao.id);
+  await db.edicoes.where("sessaoId").equals(sessao.id).delete();
 }

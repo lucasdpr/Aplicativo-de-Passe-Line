@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buscarTodas } from "@/lib/buscarTodas";
+import { hojeIso } from "@/lib/datas";
 import type { Maquina, TipoFicha, Veio } from "@/types";
 import { comboLabel, intervaloDias, type Combo } from "@/lib/prazos";
 
@@ -201,21 +203,38 @@ export async function buscarAnaliseCombos(
 ): Promise<AnaliseCombo[]> {
   const [{ data: sessoesRaw }, { data: passLine }, { data: gap }, { data: empeno }] =
     await Promise.all([
-      supabase
-        .from("sessoes_medicao")
-        .select("id, tipo_ficha, maquina, veio, data")
-        .order("data", { ascending: true }),
-      supabase
-        .from("linhas_pass_line_desempenadeira")
-        .select("sessao_id, n_cad, oeste_ajuste, leste_ajuste"),
-      supabase
-        .from("linhas_gap")
-        .select(
-          "sessao_id, n_cad, gap_nominal, tolerancia_mm, primeira_acionado, primeira_centro, primeira_nao_acionado, segunda_acionado, segunda_centro, segunda_nao_acionado"
-        ),
-      supabase
-        .from("linhas_empeno_desgaste")
-        .select("sessao_id, n_cad, desgaste_superior, desgaste_inferior, desgaste_par"),
+      // Tudo em páginas de 1000 (limite da API) — linhas_gap já passou disso.
+      buscarTodas<Record<string, unknown>>((de, ate) =>
+        supabase
+          .from("sessoes_medicao")
+          .select("id, tipo_ficha, maquina, veio, data")
+          .order("data", { ascending: true })
+          .order("id")
+          .range(de, ate)
+      ),
+      buscarTodas<Record<string, unknown>>((de, ate) =>
+        supabase
+          .from("linhas_pass_line_desempenadeira")
+          .select("sessao_id, n_cad, oeste_ajuste, leste_ajuste")
+          .order("id")
+          .range(de, ate)
+      ),
+      buscarTodas<Record<string, unknown>>((de, ate) =>
+        supabase
+          .from("linhas_gap")
+          .select(
+            "sessao_id, n_cad, gap_nominal, tolerancia_mm, primeira_acionado, primeira_centro, primeira_nao_acionado, segunda_acionado, segunda_centro, segunda_nao_acionado"
+          )
+          .order("id")
+          .range(de, ate)
+      ),
+      buscarTodas<Record<string, unknown>>((de, ate) =>
+        supabase
+          .from("linhas_empeno_desgaste")
+          .select("sessao_id, n_cad, desgaste_superior, desgaste_inferior, desgaste_par")
+          .order("id")
+          .range(de, ate)
+      ),
     ]);
 
   const sessoes: SessaoLeve[] = (sessoesRaw ?? []).map((s: Record<string, unknown>) => ({
@@ -448,9 +467,9 @@ export async function buscarAnaliseCombos(
       }
     }
 
-    const hojeIso = new Date().toISOString().slice(0, 10);
+    const hoje = hojeIso();
     const diasDesdeUltimaMedicao = Math.round(
-      (new Date(`${hojeIso}T00:00:00Z`).getTime() -
+      (new Date(`${hoje}T00:00:00Z`).getTime() -
         new Date(`${ultimaMedicaoEm}T00:00:00Z`).getTime()) /
         86_400_000
     );

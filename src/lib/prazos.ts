@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buscarTodas } from "@/lib/buscarTodas";
+import { hojeIso } from "@/lib/datas";
 import type { Maquina, TipoFicha, Veio } from "@/types";
 
 const VEIOS_POR_MAQUINA: Record<Maquina, Veio[]> = {
@@ -85,7 +87,7 @@ function diasEntre(hojeIso: string, alvoIso: string): number {
  */
 export function calcularPrazos(
   ultimasMedicoes: Map<string, string>,
-  hojeIso: string = new Date().toISOString().slice(0, 10)
+  hoje: string = hojeIso()
 ): PrazoCalculado[] {
   const resultado: PrazoCalculado[] = [];
   for (const combo of todosOsCombos()) {
@@ -96,7 +98,7 @@ export function calcularPrazos(
       ultimaMedicaoEm,
       intervaloDias(combo.tipoFicha, combo.maquina)
     );
-    const diasRestantes = diasEntre(hojeIso, dataAlvo);
+    const diasRestantes = diasEntre(hoje, dataAlvo);
     resultado.push({ ...combo, ultimaMedicaoEm, dataAlvo, diasRestantes });
   }
   return resultado.sort((a, b) => a.diasRestantes - b.diasRestantes);
@@ -115,10 +117,14 @@ export async function buscarUltimasMedicoes(
   supabase: SupabaseClient<any, any, any>
 ): Promise<Map<string, string>> {
   const mapa = new Map<string, string>();
-  const { data } = await supabase
-    .from("sessoes_medicao")
-    .select("tipo_ficha, maquina, veio, data")
-    .order("data", { ascending: false });
+  const { data } = await buscarTodas<Record<string, unknown>>((de, ate) =>
+    supabase
+      .from("sessoes_medicao")
+      .select("tipo_ficha, maquina, veio, data")
+      .order("data", { ascending: false })
+      .order("id")
+      .range(de, ate)
+  );
 
   for (const row of data ?? []) {
     const chave = `${row.tipo_ficha}|${row.maquina}|${row.veio}`;
