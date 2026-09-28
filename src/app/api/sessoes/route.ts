@@ -99,7 +99,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true });
+  // Horário do servidor desta versão — o aparelho guarda isso (e não o
+  // relógio dele) pra saber depois se alguém mandou uma versão mais nova.
+  const { data: gravada } = await admin
+    .from("sessoes_medicao")
+    .select("atualizado_em")
+    .eq("id", sessao.id)
+    .maybeSingle();
+
+  return NextResponse.json({ ok: true, atualizadoEm: gravada?.atualizado_em ?? null });
 }
 
 export async function DELETE(req: NextRequest) {

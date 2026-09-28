@@ -10,6 +10,7 @@ import {
   useAuthStore,
   MatriculaJaCadastradaError,
   CadastroPendenteError,
+  LoginBloqueadoError,
   SemConexaoError,
 } from "@/lib/auth";
 import { suportaPush, inscreverPush } from "@/lib/push";
@@ -57,7 +58,7 @@ export default function LoginPage() {
       router.push("/");
     } catch (err) {
       setErro(
-        err instanceof CadastroPendenteError
+        err instanceof CadastroPendenteError || err instanceof LoginBloqueadoError
           ? err.message
           : "Não foi possível entrar. Tente novamente."
       );

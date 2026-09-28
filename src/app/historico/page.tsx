@@ -112,18 +112,26 @@ export default function HistoricoPage() {
 
   async function gerarPdf(sessaoId: string, modo: "TUDO" | "ATUALIZADO" = "TUDO") {
     setGerandoId(sessaoId);
+    // Abre a aba já no toque (antes de esperar o servidor): iPhone/iPad
+    // bloqueiam window.open que acontece depois de um await.
+    const janela = window.open("", "_blank");
     try {
       const query =
         modo === "ATUALIZADO" ? `sessaoId=${sessaoId}&modo=ATUALIZADO` : `sessaoId=${sessaoId}`;
       const resp = await fetch(`/api/pdf?${query}`);
       if (!resp.ok) {
         const erro = await resp.json().catch(() => null);
+        janela?.close();
         alert(erro?.mensagem ?? erro?.error ?? "Não foi possível gerar o PDF.");
         return;
       }
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
+      if (janela) janela.location.href = url;
+      else window.open(url, "_blank");
+    } catch {
+      janela?.close();
+      alert("Não foi possível gerar o PDF. Confira a internet.");
     } finally {
       setGerandoId(null);
     }

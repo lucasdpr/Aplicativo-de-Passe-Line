@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { gravarSessao } from "@/lib/sessaoServidor";
+import { gerarHashPin } from "@/lib/pinHash";
 import { enviarNotificacaoPush } from "@/lib/serverPush";
 
 export const runtime = "nodejs";
@@ -11,13 +12,6 @@ const MATRICULAS_ADMIN = (process.env.NEXT_PUBLIC_ADMIN_MATRICULAS ?? "")
   .map((m) => m.trim())
   .filter(Boolean);
 
-async function hashPin(pin: string): Promise<string> {
-  const data = new TextEncoder().encode(pin);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 export async function POST(req: NextRequest) {
   const { nome, matricula, funcao, pin, tipoAcesso } = await req.json();
@@ -43,8 +37,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "matricula_ja_cadastrada" }, { status: 409 });
   }
 
-  const pinHash = await hashPin(String(pin));
-  const ehAdmin = MATRICULAS_ADMIN.includes(matriculaPadronizada);
+  const pinHash = await gerarHashPin(String(pin));
+  // A matrícula de NEXT_PUBLIC_ADMIN_MATRICULAS só serve pra criar o
+  // PRIMEIRO admin. Depois que existe um, cadastrar essa matrícula vira um
+  // cadastro comum, pendente de aprovação — senão quem soubesse o valor (ele
+  // fica visível no código do app) virava admin sozinho.
+  let ehAdmin = false;
+  if (MATRICULAS_ADMIN.includes(matriculaPadronizada)) {
+    const { count } = await admin
+      .from("tecnicos")
+      .select("id", { count: "exact", head: true })
+      .eq("papel", "ADMIN");
+    ehAdmin = count === 0;
+  }
   const papel = ehAdmin ? "ADMIN" : tipoAcesso === "visitante" ? "VISUALIZADOR" : "TECNICO";
   const id = uuid();
   const criadoEm = new Date().toISOString();
@@ -86,9 +91,6 @@ export async function POST(req: NextRequest) {
       aprovado: ehAdmin,
       criadoEm,
     },
-    // Volta o hash também — o dispositivo que cadastrou guarda uma cópia
-    // local pra continuar aceitando login offline neste aparelho depois.
-    pinHash,
   });
   // Só quem já nasce aprovado (admin) sai daqui logado no servidor.
   return ehAdmin ? gravarSessao(resposta, id) : resposta;

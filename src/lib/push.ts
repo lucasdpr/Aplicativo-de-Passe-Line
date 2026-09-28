@@ -1,4 +1,3 @@
-import { supabase } from "@/lib/supabase";
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -39,7 +38,7 @@ export async function inscreverPush(
 ): Promise<"ativo" | "negado" | "erro"> {
   if (!suportaPush()) return "erro";
   const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  if (!vapidKey || !supabase) return "erro";
+  if (!vapidKey) return "erro";
 
   const permissao = await Notification.requestPermission();
   if (permissao !== "granted") return "negado";
@@ -51,18 +50,19 @@ export async function inscreverPush(
   });
 
   const json = sub.toJSON();
-  const { error } = await supabase.from("push_subscriptions").upsert(
-    {
-      tecnico_id: tecnicoId,
-      tecnico_nome: tecnicoNome,
+  const resp = await fetch("/api/push", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       endpoint: json.endpoint,
       p256dh: json.keys?.p256dh,
       auth: json.keys?.auth,
-    },
-    { onConflict: "endpoint" }
-  );
-  if (error) {
-    console.error("Falha ao salvar inscrição de push", error);
+      // Usado só se ainda não tem sessão (cadastro pendente de aprovação).
+      tecnicoIdPendente: tecnicoId,
+    }),
+  }).catch(() => null);
+  if (!resp?.ok) {
+    console.error("Falha ao salvar inscrição de push", tecnicoNome);
     return "erro";
   }
 
@@ -75,7 +75,9 @@ export async function cancelarPush() {
   if (!sub) return;
   const endpoint = sub.endpoint;
   await sub.unsubscribe();
-  if (supabase) {
-    await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
-  }
+  await fetch("/api/push", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint }),
+  }).catch(() => {});
 }
