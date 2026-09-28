@@ -23,7 +23,15 @@ import {
   estiloColuna,
   processarEntradaPontoFixo,
 } from "@/lib/tabelaCampos";
-import { carregarRascunho, limparRascunho, salvarRascunho } from "@/lib/rascunho";
+import {
+  carregarRascunho,
+  chaveRascunho as criarChaveRascunho,
+  infoRascunho,
+  limparRascunho,
+  limparRascunhosAntigos,
+  salvarRascunho,
+} from "@/lib/rascunho";
+import { AvisoRascunho } from "@/components/forms/AvisoRascunho";
 
 interface RascunhoGap {
   header: SessaoHeaderValue;
@@ -203,7 +211,7 @@ function GapForm() {
   const searchParams = useSearchParams();
   const sessaoId = searchParams.get("sessaoId");
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
-  const chaveRascunho = `gap:${sessaoId ?? "novo"}`;
+  const chaveRascunho = criarChaveRascunho("gap", tecnico?.id, sessaoId);
   const [header, setHeader] = useState<SessaoHeaderValue>(
     () => carregarRascunho<RascunhoGap>(chaveRascunho)?.header ?? novaSessaoHeader()
   );
@@ -222,6 +230,11 @@ function GapForm() {
   const [linhasOriginais, setLinhasOriginais] = useState<LinhaGap[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  // Rascunho que já existia quando a tela abriu — mostra o aviso.
+  const [rascunhoRecuperado, setRascunhoRecuperado] = useState(() => {
+    limparRascunhosAntigos();
+    return infoRascunho(chaveRascunho);
+  });
   // Guarda o texto exatamente como foi digitado em cada campo numérico —
   // não dá pra recalcular isso a partir do número salvo (ver processarEntradaPontoFixo).
   const [textoDigitado, setTextoDigitado] = useState<Map<string, string>>(new Map());
@@ -401,6 +414,22 @@ function GapForm() {
     }
   }
 
+  function descartarRascunho() {
+    limparRascunho(chaveRascunho);
+    setRascunhoRecuperado(null);
+    if (sessaoId && headerOriginal) {
+      setHeader(headerOriginal);
+      setLinhas(linhasOriginais.map((l) => ({ ...l })));
+    } else {
+      const novo = novaSessaoHeader();
+      setHeader(novo);
+      setLinhas(linhasIniciais());
+    }
+    setTextoDigitado(new Map());
+    okAutomatico.current.clear();
+    setSalvo(false);
+  }
+
   async function salvar() {
     if (!tecnico) return;
     setSalvando(true);
@@ -472,6 +501,7 @@ function GapForm() {
       }
 
       limparRascunho(chaveRascunho);
+      setRascunhoRecuperado(null);
       setSalvo(true);
       sincronizarPendentes().catch(() => {});
       setTimeout(() => router.push("/historico"), 900);
@@ -516,6 +546,15 @@ function GapForm() {
           </p>
         </div>
       </div>
+
+      {rascunhoRecuperado && (
+        <AvisoRascunho
+          salvoEm={rascunhoRecuperado.salvoEm}
+          dataMedicao={header.data}
+          editando={!!sessaoId}
+          onDescartar={descartarRascunho}
+        />
+      )}
 
       <SessaoHeader value={header} onChange={handleHeaderChange} />
 
