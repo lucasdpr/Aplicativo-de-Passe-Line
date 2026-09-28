@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuid } from "uuid";
 import { ArrowLeft, MoveHorizontal } from "lucide-react";
@@ -225,6 +225,9 @@ function GapForm() {
   // Guarda o texto exatamente como foi digitado em cada campo numérico —
   // não dá pra recalcular isso a partir do número salvo (ver processarEntradaPontoFixo).
   const [textoDigitado, setTextoDigitado] = useState<Map<string, string>>(new Map());
+  // Cadeiras em que o "OK" do ajuste foi preenchido pelo app (e não digitado
+  // pelo técnico) — só esses o app pode tirar sozinho depois.
+  const okAutomatico = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     if (!sessaoId) return;
@@ -281,6 +284,30 @@ function GapForm() {
     setSalvo(false);
   }
 
+  /**
+   * 1ª medição toda dentro da tolerância = não tem ajuste: o app escreve "OK"
+   * nos dois campos de ajuste que estiverem vazios. Se a medida for corrigida
+   * e sair da tolerância, tira o "OK" que ele mesmo tinha colocado (o que o
+   * técnico digitou nunca é mexido).
+   */
+  function aplicarOkAutomatico(l: LinhaGap): LinhaGap {
+    const campos = ["ajusteAcionado", "ajusteNaoAcionado"] as const;
+    if (primeiraMedidaDentroDaTolerancia(l)) {
+      if (campos.every((c) => l[c] === undefined || l[c] === "")) {
+        okAutomatico.current.add(l.nCad);
+        return { ...l, ajusteAcionado: "OK", ajusteNaoAcionado: "OK" };
+      }
+      return l;
+    }
+    if (okAutomatico.current.has(l.nCad)) {
+      okAutomatico.current.delete(l.nCad);
+      const nova = { ...l };
+      for (const c of campos) if (nova[c] === "OK") nova[c] = undefined;
+      return nova;
+    }
+    return l;
+  }
+
   function setTolerancia(nCad: number, texto: string) {
     const linha = linhas.find((l) => l.nCad === nCad);
     if (!linha) return;
@@ -288,7 +315,9 @@ function GapForm() {
     if (nova === null) return;
     atualizarLinhas(
       linhas.map((l) =>
-        l.nCad === nCad ? { ...l, toleranciaMm: nova as number } : l
+        l.nCad === nCad
+          ? aplicarOkAutomatico({ ...l, toleranciaMm: nova as number })
+          : l
       )
     );
   }
@@ -331,6 +360,7 @@ function GapForm() {
 
   function setValor(nCad: number, campo: keyof LinhaGap, valorTexto: string) {
     if (CAMPOS_TEXTO.has(campo)) {
+      okAutomatico.current.delete(nCad);
       const valor = valorTexto === "" ? undefined : valorTexto;
       const novasLinhas = linhas.map((l) =>
         l.nCad === nCad ? { ...l, [campo]: valor } : l
@@ -358,9 +388,11 @@ function GapForm() {
     if (typeof valor === "number") {
       valor = clamparNumero(valor, 0, 999.99);
     }
-    const novasLinhas = linhas.map((l) =>
-      l.nCad === nCad ? { ...l, [campo]: valor } : l
-    );
+    const novasLinhas = linhas.map((l) => {
+      if (l.nCad !== nCad) return l;
+      const nova = { ...l, [campo]: valor };
+      return CAMPOS_PRIMEIRA.includes(campo) ? aplicarOkAutomatico(nova) : nova;
+    });
     atualizarLinhas(novasLinhas);
 
     if (CAMPOS_PRIMEIRA.includes(campo) && MEDIDA_COMPLETA.test(texto)) {
@@ -494,7 +526,7 @@ function GapForm() {
         Nas colunas <strong>Ajuste</strong>: escreva <strong>OK</strong> se não precisou
         ajustar, ou anote o que foi feito. Não é campo de número. Se as 3 medidas
         da <strong>1ª medição</strong> ficarem dentro da tolerância, o cursor pula
-        sozinho pra cadeira de baixo.
+        sozinho pra cadeira de baixo e o ajuste é preenchido com <strong>OK</strong>.
       </p>
 
       <div className="surface scrollbar-thin max-h-[60vh] overflow-auto">
