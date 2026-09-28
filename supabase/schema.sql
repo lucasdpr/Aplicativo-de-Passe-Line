@@ -7,7 +7,7 @@
 -- que usam a chave de serviço e conferem a sessão de quem pediu.
 
 create or replace function set_atualizado_em() returns trigger
-language plpgsql as $$
+language plpgsql set search_path = '' as $$
 begin
   new.atualizado_em = now();
   return new;
