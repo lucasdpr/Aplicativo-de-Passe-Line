@@ -27,11 +27,7 @@ function notificarConclusao(sessao: SessaoMedicao) {
   fetch("/api/notificar", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      titulo: "Pass-Line concluído",
-      corpo: `${sessao.tecnicoNome} concluiu ${NOMES_FICHA[sessao.tipoFicha]} — ${sessao.maquina} veio ${sessao.veio}`,
-      urlDestino: "/historico",
-    }),
+    body: JSON.stringify({ sessaoId: sessao.id }),
   }).catch(() => {});
 }
 
@@ -89,7 +85,7 @@ async function enviarSessao(sessao: SessaoMedicao) {
   });
   if (!resp.ok) {
     const corpo = await resp.json().catch(() => ({}));
-    throw new Error(corpo.error ?? "Falha ao sincronizar sessão");
+    throw new Error(corpo.mensagem ?? corpo.error ?? "Falha ao sincronizar sessão");
   }
 }
 
@@ -230,7 +226,7 @@ export async function excluirSessao(sessao: SessaoMedicao) {
     const resp = await fetch(`/api/sessoes?id=${sessao.id}`, { method: "DELETE" });
     if (!resp.ok) {
       const corpo = await resp.json().catch(() => ({}));
-      throw new Error(corpo.error ?? "Falha ao excluir no servidor");
+      throw new Error(corpo.mensagem ?? corpo.error ?? "Falha ao excluir no servidor");
     }
   }
 }

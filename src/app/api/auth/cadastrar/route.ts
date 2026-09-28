@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { gravarSessao } from "@/lib/sessaoServidor";
 import { enviarNotificacaoPush } from "@/lib/serverPush";
 
 export const runtime = "nodejs";
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   const { data: existentes, error: buscaError } = await admin
     .from("tecnicos")
     .select("id")
-    .ilike("matricula", matriculaPadronizada);
+    .eq("matricula", matriculaPadronizada);
   if (buscaError) {
     return NextResponse.json({ error: buscaError.message }, { status: 500 });
   }
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
     }).catch(() => {});
   }
 
-  return NextResponse.json({
+  const resposta = NextResponse.json({
     tecnico: {
       id,
       nome: nomePadronizado,
@@ -89,4 +90,6 @@ export async function POST(req: NextRequest) {
     // local pra continuar aceitando login offline neste aparelho depois.
     pinHash,
   });
+  // Só quem já nasce aprovado (admin) sai daqui logado no servidor.
+  return ehAdmin ? gravarSessao(resposta, id) : resposta;
 }

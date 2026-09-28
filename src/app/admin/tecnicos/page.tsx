@@ -56,6 +56,8 @@ export default function AdminTecnicosPage() {
     try {
       await resetarPin(id, novoPin);
       alert("PIN redefinido com sucesso.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     } finally {
       setResetandoId(null);
     }
@@ -66,24 +68,22 @@ export default function AdminTecnicosPage() {
       `Confirmar que ${nome} é realmente um técnico da equipe e liberar o acesso dele?`
     );
     if (!confirmado) return;
-    await aprovarTecnico(id);
+    try {
+      await aprovarTecnico(id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
     recarregarTecnicos();
-    fetch("/api/notificar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        titulo: "Acesso liberado!",
-        corpo: "Seu cadastro no CSN Pass-Line foi aprovado. Já pode entrar.",
-        urlDestino: "/login",
-        tecnicoId: id,
-      }),
-    }).catch(() => {});
   }
 
   async function handleDefinirPapel(id: string, nome: string, papel: PapelTecnico) {
     const confirmado = window.confirm(`Definir ${nome} como "${NOME_PAPEL[papel]}"?`);
     if (!confirmado) return;
-    await definirPapel(id, papel);
+    try {
+      await definirPapel(id, papel);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
     recarregarTecnicos();
   }
 
@@ -92,7 +92,11 @@ export default function AdminTecnicosPage() {
       `Excluir o cadastro de ${nome}? As medições que ele já registrou continuam no histórico — só o acesso de login é removido. Essa ação não pode ser desfeita.`
     );
     if (!confirmado) return;
-    await excluirTecnico(id);
+    try {
+      await excluirTecnico(id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
     recarregarTecnicos();
   }
 

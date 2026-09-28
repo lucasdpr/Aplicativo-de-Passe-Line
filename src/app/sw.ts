@@ -59,7 +59,13 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data?.url as string) ?? "/historico";
+  // Só abre página do próprio app — nunca um link externo vindo do push.
+  const bruto = (event.notification.data?.url as string) ?? "/historico";
+  const destino = new URL(bruto, self.location.origin);
+  const url =
+    destino.origin === self.location.origin
+      ? destino.pathname + destino.search
+      : "/historico";
   event.waitUntil(
     self.clients.matchAll({ type: "window" }).then((clientList) => {
       for (const client of clientList) {
