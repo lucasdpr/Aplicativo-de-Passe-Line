@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import webpush from "web-push";
 import { buscarUltimasMedicoes, calcularPrazos, comboLabel } from "@/lib/prazos";
 
@@ -22,15 +22,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "não autorizado" }, { status: 401 });
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key || !configurarWebPush()) {
-    return NextResponse.json(
-      { error: "Supabase ou VAPID não configurados no servidor" },
-      { status: 500 }
-    );
+  if (!configurarWebPush()) {
+    return NextResponse.json({ error: "VAPID não configurado no servidor" }, { status: 500 });
   }
-  const supabase = createClient(url, key);
+  // Chave de serviço: as tabelas de push e de prazos avisados não ficam
+  // mais abertas pra chave pública.
+  const supabase = supabaseAdmin();
 
   const ultimas = await buscarUltimasMedicoes(supabase);
   const prazos = calcularPrazos(ultimas).filter((p) => LIMIARES.has(p.diasRestantes));
@@ -82,7 +79,7 @@ export async function GET(req: NextRequest) {
 
     const endpointsExpirados: string[] = [];
     await Promise.all(
-      (inscricoes ?? []).map(async (inscricao) => {
+      (inscricoes ?? []).map(async (inscricao: { endpoint: string; p256dh: string; auth: string }) => {
         try {
           await webpush.sendNotification(
             {

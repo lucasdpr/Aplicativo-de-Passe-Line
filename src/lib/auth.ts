@@ -1,15 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { db } from "@/lib/db/dexie";
+import { conferirPin, gerarHashPin } from "@/lib/pinHash";
 import type { PapelTecnico, Tecnico } from "@/types";
 
-async function hashPin(pin: string): Promise<string> {
-  const data = new TextEncoder().encode(pin);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 /**
  * Guarda uma cópia local do técnico (pra login offline depois). Em aba
@@ -86,6 +80,13 @@ export class CadastroPendenteError extends Error {
   }
 }
 
+export class LoginBloqueadoError extends Error {
+  constructor(mensagem: string) {
+    super(mensagem);
+    this.name = "LoginBloqueadoError";
+  }
+}
+
 export class SemConexaoError extends Error {
   constructor() {
     super(
@@ -115,7 +116,9 @@ export async function cadastrarTecnico(
     throw new Error(corpo.mensagem ?? corpo.error ?? "Não foi possível cadastrar.");
   }
 
-  const tecnico: Tecnico = { ...corpo.tecnico, pin: corpo.pinHash };
+  // Cópia local pra login offline: hash lento com sal, feito aqui mesmo
+  // (o servidor não devolve mais o hash dele).
+  const tecnico: Tecnico = { ...corpo.tecnico, pin: await gerarHashPin(pin) };
   await guardarLocalSeConseguir(tecnico);
   return semPinDe(tecnico);
 }
@@ -125,7 +128,6 @@ export async function autenticarPorPin(
   pin: string
 ): Promise<Omit<Tecnico, "pin"> | null> {
   const matriculaPadronizada = matricula.trim().toUpperCase();
-  const pinHash = await hashPin(pin);
 
   if (navigator.onLine) {
     try {
@@ -141,23 +143,30 @@ export async function autenticarPorPin(
       });
 
       if (resp.status === 403) throw new CadastroPendenteError();
+      if (resp.status === 429) {
+        const corpo = await resp.json().catch(() => ({}));
+        throw new LoginBloqueadoError(corpo.mensagem ?? "Muitas tentativas. Espere alguns minutos.");
+      }
+      // PIN errado conferido pelo servidor: não cai pro login offline (senão
+      // um PIN antigo guardado neste aparelho ainda entraria).
+      if (resp.status === 404) return null;
 
       if (resp.ok) {
         const { tecnico: encontrado } = await resp.json();
-        const tecnico: Tecnico = { ...encontrado, pin: pinHash };
+        const tecnico: Tecnico = { ...encontrado, pin: await gerarHashPin(pin) };
         await guardarLocalSeConseguir(tecnico);
         return semPinDe(tecnico);
       }
 
     } catch (err) {
-      if (err instanceof CadastroPendenteError) throw err;
+      if (err instanceof CadastroPendenteError || err instanceof LoginBloqueadoError) throw err;
       // Falha de rede genuína: cai pro fallback local abaixo.
     }
   }
 
   // Offline (ou servidor indisponível no momento): usa o cache local deste
   // aparelho, alimentado por logins online anteriores.
-  const tecnicoLocal = await buscarLegadoLocal(matriculaPadronizada, pinHash);
+  const tecnicoLocal = await buscarLegadoLocal(matriculaPadronizada, pin);
   if (!tecnicoLocal) return null;
   if (!tecnicoLocal.aprovado) throw new CadastroPendenteError();
   return semPinDe(tecnicoLocal);
@@ -171,7 +180,7 @@ export async function autenticarPorPin(
  */
 async function buscarLegadoLocal(
   matriculaPadronizada: string,
-  pinHash: string
+  pin: string
 ): Promise<Tecnico | null> {
   let todosLocais: Tecnico[];
   try {
@@ -183,7 +192,19 @@ async function buscarLegadoLocal(
   const candidatosLocais = todosLocais.filter(
     (t) => t.matricula.trim().toUpperCase() === matriculaPadronizada
   );
-  const encontrado = candidatosLocais.find((t) => t.pin === pinHash);
+  let encontrado: Tecnico | undefined;
+  for (const t of candidatosLocais) {
+    const r = await conferirPin(pin, t.pin);
+    if (r.ok) {
+      encontrado = t;
+      // Hash antigo (SHA-256 sem sal) guardado neste aparelho: troca agora.
+      if (r.formatoAntigo) {
+        encontrado = { ...t, pin: await gerarHashPin(pin) };
+        await guardarLocalSeConseguir(encontrado);
+      }
+      break;
+    }
+  }
   if (!encontrado) return null;
 
   const eraAdminAntigo = (encontrado as unknown as { isAdmin?: boolean }).isAdmin;

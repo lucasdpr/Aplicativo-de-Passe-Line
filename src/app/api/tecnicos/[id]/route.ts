@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { exigirSessao } from "@/lib/sessaoServidor";
+import { gerarHashPin } from "@/lib/pinHash";
 import { enviarNotificacaoPush } from "@/lib/serverPush";
 import type { PapelTecnico } from "@/types";
 
@@ -8,13 +9,6 @@ const PAPEIS_VALIDOS: PapelTecnico[] = ["ADMIN", "TECNICO", "VISUALIZADOR"];
 
 export const runtime = "nodejs";
 
-async function hashPin(pin: string): Promise<string> {
-  const data = new TextEncoder().encode(pin);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 export async function PATCH(
   req: NextRequest,
@@ -60,7 +54,7 @@ export async function PATCH(
     if (!body.novoPin || String(body.novoPin).length < 4) {
       return NextResponse.json({ error: "PIN precisa ter pelo menos 4 dígitos" }, { status: 400 });
     }
-    const pinHash = await hashPin(String(body.novoPin));
+    const pinHash = await gerarHashPin(String(body.novoPin));
     const { error } = await admin.from("tecnicos").update({ pin_hash: pinHash }).eq("id", id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });

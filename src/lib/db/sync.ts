@@ -97,11 +97,13 @@ async function enviarPendentes(): Promise<{
 
   for (const sessao of pendentes) {
     try {
-      const primeiraVez = !sessao.sincronizadoEm;
-      await enviarSessao(sessao);
+      const primeiraVez = !sessao.sincronizadoEm && !sessao.editadoEm;
+      const atualizadoEm = await enviarSessao(sessao);
       await db.sessoes.update(sessao.id, {
         status: "SINCRONIZADO",
-        sincronizadoEm: new Date().toISOString(),
+        // Horário do servidor, não do tablet: com o relógio do tablet
+        // adiantado, edições de outros aparelhos nunca eram baixadas.
+        sincronizadoEm: atualizadoEm ?? new Date().toISOString(),
       });
       if (primeiraVez) notificarConclusao(sessao);
       enviados++;
@@ -116,7 +118,7 @@ async function enviarPendentes(): Promise<{
   return { enviados, falhas, erros };
 }
 
-async function enviarSessao(sessao: SessaoMedicao) {
+async function enviarSessao(sessao: SessaoMedicao): Promise<string | null> {
   const linhasTable = TABELA_LOCAL_POR_TIPO[sessao.tipoFicha];
   const linhas = await linhasTable.where("sessaoId").equals(sessao.id).toArray();
 
@@ -129,6 +131,8 @@ async function enviarSessao(sessao: SessaoMedicao) {
     const corpo = await resp.json().catch(() => ({}));
     throw new Error(corpo.mensagem ?? corpo.error ?? "Falha ao sincronizar sessão");
   }
+  const corpo = await resp.json().catch(() => ({}));
+  return (corpo.atualizadoEm as string | null) ?? null;
 }
 
 function fromSnakeCase<T>(row: Record<string, unknown>): T {
