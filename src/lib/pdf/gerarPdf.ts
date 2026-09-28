@@ -441,6 +441,8 @@ function desenharCabecalhoTabela(
         .reduce((s, c) => s + c.width, 0);
       for (let i = 0; i < g.colunas; i++) temGrupo[col + i] = !!g.titulo;
       if (g.titulo) {
+        // Sub-cabeçalho do grupo com um tom um pouco mais claro, alinhado
+        // exatamente com as colunas do grupo.
         ctx.page.drawRectangle({
           x,
           y: headerY - ALTURA_CABECALHO * 2,
@@ -450,11 +452,10 @@ function desenharCabecalhoTabela(
         });
         desenharTextoCelula(ctx, g.titulo, x, largura, headerY - ALTURA_CABECALHO + 4, 7, ctx.bold, BRANCO, "centro");
         ctx.page.drawLine({
-          start: { x: x + 3, y: headerY - ALTURA_CABECALHO },
-          end: { x: x + largura - 3, y: headerY - ALTURA_CABECALHO },
-          thickness: 0.5,
+          start: { x, y: headerY - ALTURA_CABECALHO },
+          end: { x: x + largura, y: headerY - ALTURA_CABECALHO },
+          thickness: 0.6,
           color: BRANCO,
-          opacity: 0.6,
         });
       }
       x += largura;
@@ -472,6 +473,33 @@ function desenharCabecalhoTabela(
     const tamanho = tamanhoQueCabe(ctx.bold, col.header, 6.5, col.width - 6);
     desenharTextoCelula(ctx, col.header, x, col.width, yTexto, tamanho, ctx.bold, BRANCO, "centro");
     x += col.width;
+  });
+
+  // Divisórias verticais no cabeçalho, alinhadas com a grade da tabela:
+  // entre grupos a linha ocupa o cabeçalho todo; dentro de um grupo, só a
+  // linha dos sub-títulos.
+  const inicioGrupo = new Set<number>();
+  if (grupos) {
+    let c = 0;
+    for (const g of grupos) {
+      inicioGrupo.add(c);
+      c += g.colunas;
+    }
+  }
+  let xDiv = startX;
+  colunas.forEach((col, i) => {
+    if (i > 0) {
+      const divisaGrupo = !grupos || inicioGrupo.has(i);
+      const inteira = divisaGrupo || !temGrupo[i];
+      ctx.page.drawLine({
+        start: { x: xDiv, y: inteira ? headerY : headerY - ALTURA_CABECALHO },
+        end: { x: xDiv, y: headerY - altura },
+        thickness: divisaGrupo ? 0.8 : 0.4,
+        color: BRANCO,
+        opacity: divisaGrupo ? 0.7 : 0.45,
+      });
+    }
+    xDiv += col.width;
   });
 
   ctx.y = headerY - altura;
