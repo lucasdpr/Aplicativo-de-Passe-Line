@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { hojeIso } from "@/lib/datas";
 import { AlarmClock, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
@@ -18,9 +19,6 @@ function textoPrazo(dias: number): string {
   return `Faltam ${dias} dia${dias === 1 ? "" : "s"}`;
 }
 
-function hojeIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export function LembretePrazos() {
   const [prazos, setPrazos] = useState<PrazoCalculado[] | null>(null);

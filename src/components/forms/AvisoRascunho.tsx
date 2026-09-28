@@ -1,6 +1,7 @@
 "use client";
 
 import { History } from "lucide-react";
+import { hojeIso } from "@/lib/datas";
 
 function formatarData(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR");
@@ -24,8 +25,7 @@ export function AvisoRascunho({
   onDescartar: () => void;
 }) {
   const quando = new Date(salvoEm);
-  const hoje = new Date().toLocaleDateString("sv-SE"); // AAAA-MM-DD no fuso local
-  const dataDiferente = !editando && dataMedicao !== hoje;
+  const dataDiferente = !editando && dataMedicao !== hojeIso();
 
   return (
     <div

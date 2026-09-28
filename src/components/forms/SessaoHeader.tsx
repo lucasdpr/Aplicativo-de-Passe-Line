@@ -1,6 +1,7 @@
 "use client";
 
 import type { Maquina, Veio } from "@/types";
+import { hojeIso } from "@/lib/datas";
 
 const VEIOS_POR_MAQUINA: Record<Maquina, Veio[]> = {
   MCC2: ["C", "D"],
@@ -125,7 +126,7 @@ export function novaSessaoHeader(): SessaoHeaderValue {
   return {
     maquina: "MCC2",
     veio: "C",
-    data: new Date().toISOString().slice(0, 10),
+    data: hojeIso(),
     observacao: "",
     inspecionadoPor: "",
     liberadoPor: "",
