@@ -17,7 +17,15 @@ import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
 import { clamparNumero, formatarValorDigitado, paraValorDigitado } from "@/lib/tabelaCampos";
-import { carregarRascunho, limparRascunho, salvarRascunho } from "@/lib/rascunho";
+import {
+  carregarRascunho,
+  chaveRascunho as criarChaveRascunho,
+  infoRascunho,
+  limparRascunho,
+  limparRascunhosAntigos,
+  salvarRascunho,
+} from "@/lib/rascunho";
+import { AvisoRascunho } from "@/components/forms/AvisoRascunho";
 import {
   SEGMENTOS_PADRAO,
   SEGMENTOS_MCC4,
@@ -86,7 +94,7 @@ function PassLineSegmentosForm() {
   const searchParams = useSearchParams();
   const sessaoId = searchParams.get("sessaoId");
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
-  const chaveRascunho = `pass-line-segmentos:${sessaoId ?? "novo"}`;
+  const chaveRascunho = criarChaveRascunho("pass-line-segmentos", tecnico?.id, sessaoId);
   const [header, setHeader] = useState<SessaoHeaderValue>(
     () =>
       carregarRascunho<RascunhoPassLineSegmentos>(chaveRascunho)?.header ??
@@ -107,6 +115,11 @@ function PassLineSegmentosForm() {
   >([]);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  // Rascunho que já existia quando a tela abriu — mostra o aviso.
+  const [rascunhoRecuperado, setRascunhoRecuperado] = useState(() => {
+    limparRascunhosAntigos();
+    return infoRascunho(chaveRascunho);
+  });
 
   useEffect(() => {
     if (!sessaoId) return;
@@ -205,6 +218,20 @@ function PassLineSegmentosForm() {
     salvarRascunho<RascunhoPassLineSegmentos>(chaveRascunho, { header, leituras: novasLeituras });
   }
 
+  function descartarRascunho() {
+    limparRascunho(chaveRascunho);
+    setRascunhoRecuperado(null);
+    if (sessaoId && headerOriginal) {
+      setHeader(headerOriginal);
+      setLeituras(leiturasOriginais.map((l) => ({ ...l })));
+    } else {
+      const novo = novaSessaoHeader();
+      setHeader(novo);
+      setLeituras(estadoInicial(novo.maquina));
+    }
+    setSalvo(false);
+  }
+
   async function salvar() {
     if (!tecnico) return;
     setSalvando(true);
@@ -279,6 +306,7 @@ function PassLineSegmentosForm() {
       }
 
       limparRascunho(chaveRascunho);
+      setRascunhoRecuperado(null);
       setSalvo(true);
       sincronizarPendentes().catch(() => {});
       setTimeout(() => router.push("/historico"), 900);
@@ -321,6 +349,15 @@ function PassLineSegmentosForm() {
           </p>
         </div>
       </div>
+
+      {rascunhoRecuperado && (
+        <AvisoRascunho
+          salvoEm={rascunhoRecuperado.salvoEm}
+          dataMedicao={header.data}
+          editando={!!sessaoId}
+          onDescartar={descartarRascunho}
+        />
+      )}
 
       <SessaoHeader value={header} onChange={handleHeaderChange} />
 

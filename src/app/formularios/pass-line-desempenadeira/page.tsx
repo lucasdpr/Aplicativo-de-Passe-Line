@@ -29,7 +29,15 @@ import {
   type LinhaPassLineDesempenadeira,
   type SessaoMedicao,
 } from "@/types";
-import { carregarRascunho, limparRascunho, salvarRascunho } from "@/lib/rascunho";
+import {
+  carregarRascunho,
+  chaveRascunho as criarChaveRascunho,
+  infoRascunho,
+  limparRascunho,
+  limparRascunhosAntigos,
+  salvarRascunho,
+} from "@/lib/rascunho";
+import { AvisoRascunho } from "@/components/forms/AvisoRascunho";
 
 interface RascunhoPassLineDesempenadeira {
   header: SessaoHeaderValue;
@@ -79,7 +87,7 @@ function PassLineDesempenadeiraForm() {
   const searchParams = useSearchParams();
   const sessaoId = searchParams.get("sessaoId");
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
-  const chaveRascunho = `pass-line-desempenadeira:${sessaoId ?? "novo"}`;
+  const chaveRascunho = criarChaveRascunho("pass-line-desempenadeira", tecnico?.id, sessaoId);
   const [header, setHeader] = useState<SessaoHeaderValue>(
     () =>
       carregarRascunho<RascunhoPassLineDesempenadeira>(chaveRascunho)?.header ??
@@ -101,6 +109,11 @@ function PassLineDesempenadeiraForm() {
   >([]);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  // Rascunho que já existia quando a tela abriu — mostra o aviso.
+  const [rascunhoRecuperado, setRascunhoRecuperado] = useState(() => {
+    limparRascunhosAntigos();
+    return infoRascunho(chaveRascunho);
+  });
 
   useEffect(() => {
     if (!sessaoId) return;
@@ -160,6 +173,20 @@ function PassLineDesempenadeiraForm() {
       header,
       linhas: novasLinhas,
     });
+    setSalvo(false);
+  }
+
+  function descartarRascunho() {
+    limparRascunho(chaveRascunho);
+    setRascunhoRecuperado(null);
+    if (sessaoId && headerOriginal) {
+      setHeader(headerOriginal);
+      setLinhas(linhasOriginais.map((l) => ({ ...l })));
+    } else {
+      const novo = novaSessaoHeader();
+      setHeader(novo);
+      setLinhas(linhasIniciais());
+    }
     setSalvo(false);
   }
 
@@ -241,6 +268,7 @@ function PassLineDesempenadeiraForm() {
       }
 
       limparRascunho(chaveRascunho);
+      setRascunhoRecuperado(null);
       setSalvo(true);
       sincronizarPendentes().catch(() => {});
       setTimeout(() => router.push("/historico"), 900);
@@ -282,6 +310,15 @@ function PassLineDesempenadeiraForm() {
           </p>
         </div>
       </div>
+
+      {rascunhoRecuperado && (
+        <AvisoRascunho
+          salvoEm={rascunhoRecuperado.salvoEm}
+          dataMedicao={header.data}
+          editando={!!sessaoId}
+          onDescartar={descartarRascunho}
+        />
+      )}
 
       <SessaoHeader value={header} onChange={handleHeaderChange} />
 
