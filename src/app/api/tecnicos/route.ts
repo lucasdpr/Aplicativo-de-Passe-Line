@@ -1,9 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { exigirSessao } from "@/lib/sessaoServidor";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const sessao = await exigirSessao(req, ["ADMIN"]);
+  if ("erro" in sessao) return sessao.erro;
+
   const admin = supabaseAdmin();
   const { data, error } = await admin
     .from("tecnicos")

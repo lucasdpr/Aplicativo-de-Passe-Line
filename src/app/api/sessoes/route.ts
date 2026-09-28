@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { exigirSessao } from "@/lib/sessaoServidor";
 import type { TipoFicha } from "@/types";
 
 export const runtime = "nodejs";
@@ -21,6 +22,9 @@ function toSnakeCase(obj: Record<string, unknown>) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await exigirSessao(req, ["TECNICO", "ADMIN"]);
+  if ("erro" in auth) return auth.erro;
+
   const { sessao, linhas } = await req.json();
   if (!sessao?.id || !sessao?.tipoFicha) {
     return NextResponse.json({ error: "Sessão inválida" }, { status: 400 });
@@ -30,6 +34,28 @@ export async function POST(req: NextRequest) {
   const tabelaLinhas = TABELA_POR_TIPO[sessao.tipoFicha as TipoFicha];
   if (!tabelaLinhas) {
     return NextResponse.json({ error: "tipoFicha inválido" }, { status: 400 });
+  }
+
+  // Medição nova: qualquer técnico aprovado envia (inclusive a que outro
+  // técnico registrou offline no mesmo tablet). Medição que já existe no
+  // servidor só pode ser alterada por quem registrou ou por um admin.
+  const { data: existente, error: buscaError } = await admin
+    .from("sessoes_medicao")
+    .select("tecnico_id")
+    .eq("id", sessao.id)
+    .maybeSingle();
+  if (buscaError) {
+    return NextResponse.json({ error: buscaError.message }, { status: 500 });
+  }
+  if (
+    existente &&
+    auth.tecnico.papel !== "ADMIN" &&
+    existente.tecnico_id !== auth.tecnico.id
+  ) {
+    return NextResponse.json(
+      { error: "sem_permissao", mensagem: "Só um administrador pode alterar a medição de outro técnico." },
+      { status: 403 }
+    );
   }
 
   const { error: sessaoError } = await admin.from("sessoes_medicao").upsert({
@@ -77,6 +103,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await exigirSessao(req, ["ADMIN"]);
+  if ("erro" in auth) return auth.erro;
+
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id é obrigatório" }, { status: 400 });
   const admin = supabaseAdmin();

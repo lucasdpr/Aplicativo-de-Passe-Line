@@ -53,7 +53,12 @@ export const useAuthStore = create<AuthState>()(
         tecnicoLogado: null,
         hidratado: false,
         login: (tecnico) => set({ tecnicoLogado: tecnico }),
-        logout: () => set({ tecnicoLogado: null }),
+        logout: () => {
+          // Apaga também o cookie de sessão do servidor (se tiver internet;
+          // sem internet ele fica, mas o próximo login online substitui).
+          fetch("/api/auth/sair", { method: "POST" }).catch(() => {});
+          set({ tecnicoLogado: null });
+        },
       };
     },
     {
@@ -107,7 +112,7 @@ export async function cadastrarTecnico(
   const corpo = await resp.json().catch(() => ({}));
   if (!resp.ok) {
     if (corpo.error === "matricula_ja_cadastrada") throw new MatriculaJaCadastradaError();
-    throw new Error(corpo.error ?? "Não foi possível cadastrar.");
+    throw new Error(corpo.mensagem ?? corpo.error ?? "Não foi possível cadastrar.");
   }
 
   const tecnico: Tecnico = { ...corpo.tecnico, pin: corpo.pinHash };
@@ -144,33 +149,6 @@ export async function autenticarPorPin(
         return semPinDe(tecnico);
       }
 
-      if (resp.status === 404) {
-        // Não achou na nuvem: pode ser um cadastro antigo, feito antes desta
-        // versão (só existia no aparelho). Confere no cache local e, se bater
-        // o PIN, migra esse técnico pra nuvem agora.
-        const legado = await buscarLegadoLocal(matriculaPadronizada, pinHash);
-        if (legado) {
-          const migrarResp = await fetch("/api/auth/migrar-legado", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              id: legado.id,
-              nome: legado.nome,
-              matricula: matriculaPadronizada,
-              funcao: legado.funcao,
-              pinHash,
-              papel: legado.papel,
-              criadoEm: legado.criadoEm,
-            }),
-          });
-          if (migrarResp.ok) {
-            const { tecnico: migradoRemoto } = await migrarResp.json();
-            const migrado: Tecnico = { ...migradoRemoto, pin: pinHash };
-            await guardarLocalSeConseguir(migrado);
-            return semPinDe(migrado);
-          }
-        }
-      }
     } catch (err) {
       if (err instanceof CadastroPendenteError) throw err;
       // Falha de rede genuína: cai pro fallback local abaixo.
@@ -236,7 +214,7 @@ export async function aprovarTecnico(tecnicoId: string) {
   });
   if (!resp.ok) {
     const corpo = await resp.json().catch(() => ({}));
-    throw new Error(corpo.error ?? "Não foi possível aprovar.");
+    throw new Error(corpo.mensagem ?? corpo.error ?? "Não foi possível aprovar.");
   }
 }
 
@@ -248,7 +226,7 @@ export async function resetarPin(tecnicoId: string, novoPin: string) {
   });
   if (!resp.ok) {
     const corpo = await resp.json().catch(() => ({}));
-    throw new Error(corpo.error ?? "Não foi possível resetar o PIN.");
+    throw new Error(corpo.mensagem ?? corpo.error ?? "Não foi possível resetar o PIN.");
   }
 }
 
@@ -260,7 +238,7 @@ export async function definirPapel(tecnicoId: string, papel: PapelTecnico) {
   });
   if (!resp.ok) {
     const corpo = await resp.json().catch(() => ({}));
-    throw new Error(corpo.error ?? "Não foi possível trocar o papel.");
+    throw new Error(corpo.mensagem ?? corpo.error ?? "Não foi possível trocar o papel.");
   }
 }
 
@@ -270,7 +248,33 @@ export async function excluirTecnico(tecnicoId: string) {
   const resp = await fetch(`/api/tecnicos/${tecnicoId}`, { method: "DELETE" });
   if (!resp.ok) {
     const corpo = await resp.json().catch(() => ({}));
-    throw new Error(corpo.error ?? "Não foi possível excluir.");
+    throw new Error(corpo.mensagem ?? corpo.error ?? "Não foi possível excluir.");
   }
   await db.tecnicos.delete(tecnicoId);
+}
+
+/**
+ * Confere, com internet, se a sessão do servidor (cookie) é mesmo do técnico
+ * logado neste aparelho. Devolve:
+ * - "ok" (e o técnico atualizado do banco, ex.: papel trocado por um admin)
+ * - "invalida": sem sessão, vencida, ou de outro técnico — precisa entrar de novo
+ * - "sem_rede": não deu pra confirmar agora (offline); não faz nada
+ */
+export async function conferirSessaoServidor(
+  tecnicoId: string
+): Promise<
+  | { estado: "ok"; tecnico: Omit<Tecnico, "pin"> }
+  | { estado: "invalida" }
+  | { estado: "sem_rede" }
+> {
+  try {
+    const resp = await fetch("/api/auth/eu", { signal: AbortSignal.timeout(8000) });
+    if (resp.status === 401) return { estado: "invalida" };
+    if (!resp.ok) return { estado: "sem_rede" };
+    const { tecnico } = await resp.json();
+    if (!tecnico || tecnico.id !== tecnicoId) return { estado: "invalida" };
+    return { estado: "ok", tecnico };
+  } catch {
+    return { estado: "sem_rede" };
+  }
 }

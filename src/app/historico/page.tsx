@@ -118,7 +118,7 @@ export default function HistoricoPage() {
       const resp = await fetch(`/api/pdf?${query}`);
       if (!resp.ok) {
         const erro = await resp.json().catch(() => null);
-        alert(erro?.error ?? "Não foi possível gerar o PDF.");
+        alert(erro?.mensagem ?? erro?.error ?? "Não foi possível gerar o PDF.");
         return;
       }
       const blob = await resp.blob();

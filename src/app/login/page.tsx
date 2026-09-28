@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { KeyRound, User as UserIcon, HardHat, Eye, ArrowLeft, Bell, BellRing } from "lucide-react";
@@ -28,6 +28,13 @@ export default function LoginPage() {
   const [carregando, setCarregando] = useState(false);
   const [tecnicoPendente, setTecnicoPendente] = useState<{ id: string; nome: string } | null>(null);
   const [notificacaoAtivada, setNotificacaoAtivada] = useState(false);
+
+  // Veio pra cá porque a sessão do servidor não era válida (AuthGuard).
+  const sessaoExpirada = useSyncExternalStore(
+    () => () => {},
+    () => new URLSearchParams(window.location.search).get("motivo") === "sessao",
+    () => false
+  );
 
   async function handleAtivarNotificacaoPendente() {
     if (!tecnicoPendente) return;
@@ -296,6 +303,15 @@ export default function LoginPage() {
               >
                 {erro}
               </p>
+            )}
+            {sessaoExpirada && !aviso && !erro && (
+              <div
+                className="rounded-lg px-3 py-2 text-sm"
+                style={{ background: "var(--warning-soft)", color: "var(--warning)" }}
+              >
+                Por segurança, entre de novo com sua matrícula e PIN (com internet).
+                Suas medições pendentes e rascunhos continuam guardados.
+              </div>
             )}
             {aviso && (
               <div

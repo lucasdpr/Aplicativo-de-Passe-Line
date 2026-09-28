@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { gerarPdfSessao, type ModoPdfGap } from "@/lib/pdf/gerarPdf";
+import { exigirSessao } from "@/lib/sessaoServidor";
 import type {
   SessaoMedicao,
   LinhaPassLineDesempenadeira,
@@ -29,6 +30,9 @@ function fromSnakeCase<T>(row: Record<string, unknown>): T {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await exigirSessao(req);
+  if ("erro" in auth) return auth.erro;
+
   const sessaoId = req.nextUrl.searchParams.get("sessaoId");
   if (!sessaoId) {
     return NextResponse.json({ error: "sessaoId é obrigatório" }, { status: 400 });

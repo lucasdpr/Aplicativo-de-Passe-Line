@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { gravarSessao } from "@/lib/sessaoServidor";
 import type { PapelTecnico } from "@/types";
 
 export const runtime = "nodejs";
@@ -53,13 +54,18 @@ export async function POST(req: NextRequest) {
   const { data: linhas, error } = await admin
     .from("tecnicos")
     .select("*")
-    .ilike("matricula", matriculaPadronizada);
+    // Comparação exata (as matrículas são gravadas sempre em maiúsculas).
+    // Antes era ILIKE, em que "%" e "*" são curingas: a matrícula "%"
+    // casava com todo mundo e bastava acertar o PIN de qualquer técnico.
+    .eq("matricula", matriculaPadronizada);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   const candidatos = (linhas ?? []) as unknown as LinhaTecnico[];
-  const tecnico = candidatos.find((t) => t.pin_hash === pinHash);
+  const tecnico = candidatos.find(
+    (t) => t.matricula.toUpperCase() === matriculaPadronizada && t.pin_hash === pinHash
+  );
   if (!tecnico) {
     return NextResponse.json({ error: "nao_encontrado" }, { status: 404 });
   }
@@ -79,5 +85,5 @@ export async function POST(req: NextRequest) {
     await admin.from("tecnicos").update(atualizacoes).eq("id", tecnico.id);
   }
 
-  return NextResponse.json({ tecnico: semPin(tecnico) });
+  return gravarSessao(NextResponse.json({ tecnico: semPin(tecnico) }), tecnico.id);
 }
