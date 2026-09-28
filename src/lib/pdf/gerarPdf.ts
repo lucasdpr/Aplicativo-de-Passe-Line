@@ -14,20 +14,44 @@ import type {
   LeituraSegmento,
   TipoFicha,
 } from "@/types";
+import { TOLERANCIAS as TOLERANCIAS_MM } from "@/types";
 
 const TITULOS: Record<TipoFicha, string> = {
-  PASS_LINE_DESEMPENADEIRA:
-    "MEDIÇÃO E AJUSTE DE PASS-LINE (DESEMPENADEIRA) MCC'S #2 E 3",
-  GAP: "MEDIÇÃO E AJUSTE DE GAP MCC'S #2 E 3",
-  EMPENO_DESGASTE: "MEDIÇÃO DE EMPENO E DESGASTE (DESEMPENADEIRA) MCC'S #2 E 3",
-  PASS_LINE_SEGMENTOS: "MEDIÇÃO E AJUSTE DE PASS-LINE DOS SEGMENTOS MCC'S #2 E 3",
+  PASS_LINE_DESEMPENADEIRA: "MEDIÇÃO E AJUSTE DE PASS-LINE (DESEMPENADEIRA)",
+  GAP: "MEDIÇÃO E AJUSTE DE GAP",
+  EMPENO_DESGASTE: "MEDIÇÃO DE EMPENO E DESGASTE (DESEMPENADEIRA)",
+  PASS_LINE_SEGMENTOS: "MEDIÇÃO E AJUSTE DE PASS-LINE DOS SEGMENTOS",
 };
+
+/**
+ * Título com a máquina certa: as fichas de papel das MCC's #2 e 3 são as
+ * mesmas; a MCC4 tem a dela. (Antes todo PDF saía "MCC'S #2 E 3", inclusive
+ * os da MCC4.)
+ */
+function tituloDaFicha(sessao: SessaoMedicao) {
+  const maquinas = sessao.maquina === "MCC4" ? "MCC #4" : "MCC'S #2 E 3";
+  return `${TITULOS[sessao.tipoFicha]} ${maquinas}`;
+}
+
+/** Tolerância do Pass-Line dos Segmentos: ±1,00 nas MCC's #2 e 3, ±0,50 na MCC4. */
+function toleranciaSegmentos(sessao: SessaoMedicao) {
+  return sessao.maquina === "MCC4"
+    ? TOLERANCIAS_MM.PASS_LINE_SEGMENTOS_MCC4
+    : TOLERANCIAS_MM.PASS_LINE_SEGMENTOS;
+}
+
+function textoTolerancia(sessao: SessaoMedicao) {
+  if (sessao.tipoFicha === "PASS_LINE_SEGMENTOS") {
+    return `TOLERÂNCIA: +/- ${fmt(toleranciaSegmentos(sessao))}mm`;
+  }
+  return TOLERANCIAS[sessao.tipoFicha];
+}
 
 const TOLERANCIAS: Record<TipoFicha, string> = {
   PASS_LINE_DESEMPENADEIRA: "TOLERÂNCIA ENTRE ROLO E RÉGUA +/- 0,50",
   GAP: "",
   EMPENO_DESGASTE: "EMPENO/MAXIMO 2mm",
-  PASS_LINE_SEGMENTOS: "TOLERÂNCIA: +/- 1,00mm",
+  PASS_LINE_SEGMENTOS: "",
 };
 
 type LinhasPorTipo = {
@@ -140,7 +164,7 @@ function cabecalho(ctx: Ctx, sessao: SessaoMedicao, versao?: string) {
   }
 
   // Título encolhe se não couber (a página em pé é mais estreita)
-  const titulo = TITULOS[sessao.tipoFicha];
+  const titulo = tituloDaFicha(sessao);
   const larguraTitulo = limiteTitulo - (MARGIN + 14);
   const tamanhoTitulo = Math.min(12, (12 * larguraTitulo) / bold.widthOfTextAtSize(titulo, 12));
   page.drawText(titulo, {
@@ -193,7 +217,7 @@ function cabecalho(ctx: Ctx, sessao: SessaoMedicao, versao?: string) {
 
   ctx.y = metaTop - metaAltura - 8;
 
-  const tolerancia = TOLERANCIAS[sessao.tipoFicha];
+  const tolerancia = textoTolerancia(sessao);
   if (tolerancia) {
     page.drawText(tolerancia, {
       x: MARGIN,
@@ -651,6 +675,12 @@ const COR_OK_FUNDO = rgb(0.88, 0.96, 0.9);
 const COR_PRIMEIRA = rgb(0.55, 0.38, 0.02);
 const COR_PRIMEIRA_FUNDO = rgb(1, 0.96, 0.84);
 
+/** |valor| passou do limite (com folga pra erro de ponto flutuante). */
+function foraDoLimite(valor: number | null | undefined, limite: number) {
+  if (valor === null || valor === undefined || Number.isNaN(valor)) return false;
+  return Math.abs(valor) > limite + 1e-9;
+}
+
 function foraGap(valor: number | null | undefined, l: LinhaGap) {
   if (valor === null || valor === undefined || Number.isNaN(valor)) return false;
   if (l.toleranciaMm === null || l.toleranciaMm === undefined) return false;
@@ -850,7 +880,17 @@ export async function gerarPdfSessao(
           fmt(l.lesteMedida),
           fmt(l.lesteAcionado),
           fmt(l.lesteAjuste),
-        ])
+        ]),
+        {
+          // Ajuste fora de +/- 0,50 em vermelho (mesma regra do formulário).
+          estiloCelula: (linha, coluna) => {
+            const valor =
+              coluna === 3 ? dados[linha].oesteAjuste : coluna === 6 ? dados[linha].lesteAjuste : undefined;
+            return foraDoLimite(valor, TOLERANCIAS_MM.PASS_LINE_DESEMPENADEIRA)
+              ? { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true }
+              : undefined;
+          },
+        }
       );
       break;
     }
@@ -886,27 +926,40 @@ export async function gerarPdfSessao(
       break;
     }
     case "PASS_LINE_SEGMENTOS": {
-      const dados = linhas as LeituraSegmento[];
+      // Ordem: segmento em ordem numérica (1, 2, … 17 — antes era por
+      // texto: 1, 10, 11, …, 2), depois lado acionado, depois posição.
+      const ordemSegmento = (seg: string) => {
+        const n = Number(seg);
+        return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER; // "D" por último
+      };
+      const dados = [...(linhas as LeituraSegmento[])].sort(
+        (a, b) =>
+          ordemSegmento(a.segmento) - ordemSegmento(b.segmento) ||
+          a.segmento.localeCompare(b.segmento) ||
+          (a.lado === b.lado ? 0 : a.lado === "ACIONADO" ? -1 : 1) ||
+          a.posicao - b.posicao
+      );
+      const tolerancia = toleranciaSegmentos(sessao);
       desenharTabela(
         ctx,
         [
-          { header: "SEGMENTO", width: 70 },
+          { header: "SEGMENTO", width: 70, alinhar: "centro" },
           { header: "LADO", width: 90 },
-          { header: "POSIÇÃO", width: 60 },
-          { header: "VALOR", width: 70 },
+          { header: "POSIÇÃO", width: 60, alinhar: "centro" },
+          { header: "VALOR", width: 70, alinhar: "centro" },
         ],
-        dados
-          .sort((a, b) =>
-            a.segmento === b.segmento
-              ? a.posicao - b.posicao
-              : a.segmento.localeCompare(b.segmento)
-          )
-          .map((l) => [
-            l.segmento,
-            l.lado === "ACIONADO" ? "Acionado" : "Não acionado",
-            String(l.posicao),
-            fmt(l.valor),
-          ])
+        dados.map((l) => [
+          l.segmento,
+          l.lado === "ACIONADO" ? "Acionado" : "Não acionado",
+          String(l.posicao),
+          fmt(l.valor),
+        ]),
+        {
+          estiloCelula: (linha, coluna) =>
+            coluna === 3 && foraDoLimite(dados[linha].valor, tolerancia)
+              ? { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true }
+              : undefined,
+        }
       );
       break;
     }
