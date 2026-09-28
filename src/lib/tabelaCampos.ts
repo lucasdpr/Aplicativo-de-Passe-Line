@@ -83,11 +83,15 @@ export function formatarValorDigitado(
 
 /**
  * Formata a digitação encaixando os primeiros `digitosInteiros` dígitos como
- * parte inteira — o ponto decimal só aparece sozinho depois que esse limite
+ * parte inteira — a vírgula decimal só aparece sozinha depois que esse limite
  * é passado (ex.: com 3 dígitos inteiros, digitar "261" mostra "261"; o 4º
- * dígito entra depois do ponto: "2615" vira "261,5"). Se a pessoa digitar o
- * ponto/vírgula na mão, isso é respeitado exatamente como foi digitado, sem
- * inserir outro ponto automático.
+ * dígito entra depois da vírgula: "2615" vira "261,5"). Se a pessoa digitar
+ * o ponto/vírgula na mão, ele é respeitado, sem inserir outro automático.
+ *
+ * O texto devolvido é sempre exatamente o número salvo: tudo que não é
+ * dígito é descartado, só vale o primeiro separador, e as partes inteira e
+ * decimal são cortadas nos limites. Assim o campo nunca mostra algo (ex.:
+ * "1,2,3") que na verdade foi salvo vazio ou diferente.
  *
  * Devolve o texto pronto pra exibir no campo (guarda numa variável de
  * estado à parte — não dá pra recalcular isso só a partir do número depois,
@@ -97,29 +101,34 @@ export function formatarValorDigitado(
 export function processarEntradaPontoFixo(
   valorTexto: string,
   digitosInteiros: number,
-  decimais: number
+  decimais: number,
+  permitirNegativo = false
 ): { texto: string; numero: number | undefined } {
-  if (valorTexto.trim() === "") return { texto: "", numero: undefined };
-  const negativo = valorTexto.trim().startsWith("-");
-  const temSeparadorManual = /[.,]/.test(valorTexto);
-  if (temSeparadorManual) {
-    const normalizado = valorTexto.replace(",", ".");
-    const numero = Number(normalizado);
-    return { texto: valorTexto, numero: Number.isNaN(numero) ? undefined : numero };
-  }
-  const digitos = valorTexto.replace(/[^0-9]/g, "");
-  if (digitos === "") {
-    return { texto: negativo ? "-" : "", numero: negativo ? -0 : undefined };
-  }
+  const negativo = permitirNegativo && valorTexto.trim().startsWith("-");
   const prefixo = negativo ? "-" : "";
-  if (digitos.length <= digitosInteiros) {
-    const numero = Number(digitos);
-    return { texto: prefixo + digitos, numero: negativo ? -numero : numero };
+  const idxSeparador = valorTexto.search(/[.,]/);
+
+  let parteInteira: string;
+  let parteDecimal: string;
+  let temSeparador: boolean;
+  if (idxSeparador >= 0) {
+    // Separador digitado na mão: respeita onde a pessoa colocou.
+    parteInteira = valorTexto.slice(0, idxSeparador).replace(/\D/g, "").slice(0, digitosInteiros);
+    parteDecimal = valorTexto.slice(idxSeparador + 1).replace(/\D/g, "").slice(0, decimais);
+    temSeparador = true;
+    if (parteInteira === "") parteInteira = "0";
+  } else {
+    const digitos = valorTexto.replace(/\D/g, "");
+    parteInteira = digitos.slice(0, digitosInteiros);
+    parteDecimal = digitos.slice(digitosInteiros, digitosInteiros + decimais);
+    temSeparador = parteDecimal !== "";
   }
-  const parteInteira = digitos.slice(0, digitosInteiros);
-  const parteDecimal = digitos.slice(digitosInteiros, digitosInteiros + decimais);
-  const texto = `${prefixo}${parteInteira}.${parteDecimal}`;
-  const numero = Number(texto);
+
+  if (parteInteira === "" && !temSeparador) {
+    return { texto: prefixo, numero: undefined };
+  }
+  const texto = prefixo + parteInteira + (temSeparador ? "," + parteDecimal : "");
+  const numero = Number(prefixo + parteInteira + (parteDecimal ? "." + parteDecimal : ""));
   return { texto, numero: Number.isNaN(numero) ? undefined : numero };
 }
 

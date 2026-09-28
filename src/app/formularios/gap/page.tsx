@@ -638,7 +638,7 @@ function GapForm() {
                             ehTexto
                               ? (valor as string | undefined) ?? ""
                               : textoDigitado.get(chaveCelula(l.nCad, c.key)) ??
-                                (valor !== undefined ? String(valor) : "")
+                                (valor !== undefined ? String(valor).replace(".", ",") : "")
                           }
                           onChange={(e) =>
                             setValor(l.nCad, c.key, e.target.value)
