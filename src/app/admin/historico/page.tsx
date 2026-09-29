@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { CalendarDays, ChevronDown, History, Pencil, Trash2 } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  FileDown,
+  History,
+  Loader2,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { useAuthStore, listarTecnicos } from "@/lib/auth";
 import { db } from "@/lib/db/dexie";
 import { excluirSessao } from "@/lib/db/sync";
@@ -42,6 +50,33 @@ export default function AdminHistoricoPage() {
   useEffect(() => {
     listarTecnicos().then(setTecnicos);
   }, []);
+
+  const [gerandoId, setGerandoId] = useState<string | null>(null);
+
+  async function gerarPdf(sessaoId: string, modo: "TUDO" | "ATUALIZADO") {
+    setGerandoId(sessaoId);
+    // Abre a aba já no clique: iPhone/iPad bloqueiam window.open depois de um await.
+    const janela = window.open("", "_blank");
+    try {
+      const query =
+        modo === "ATUALIZADO" ? `sessaoId=${sessaoId}&modo=ATUALIZADO` : `sessaoId=${sessaoId}`;
+      const resp = await fetch(`/api/pdf?${query}`);
+      if (!resp.ok) {
+        const erro = await resp.json().catch(() => null);
+        janela?.close();
+        alert(erro?.mensagem ?? erro?.error ?? "Não foi possível gerar o PDF.");
+        return;
+      }
+      const url = URL.createObjectURL(await resp.blob());
+      if (janela) janela.location.href = url;
+      else window.open(url, "_blank");
+    } catch {
+      janela?.close();
+      alert("Não foi possível gerar o PDF. Confira a internet.");
+    } finally {
+      setGerandoId(null);
+    }
+  }
 
   async function handleExcluirSessao(sessao: SessaoMedicao) {
     const confirmado = window.confirm(
@@ -216,6 +251,36 @@ export default function AdminHistoricoPage() {
                         >
                           {s.status === "SINCRONIZADO" ? "Sincronizado" : "Pendente"}
                         </span>
+                        {(s.tipoFicha === "GAP"
+                          ? ([
+                              ["TUDO", "PDF ver tudo"],
+                              ["ATUALIZADO", "PDF atualizado"],
+                            ] as const)
+                          : ([["TUDO", "Gerar PDF"]] as const)
+                        ).map(([modo, rotulo]) => (
+                          <button
+                            key={modo}
+                            onClick={() => gerarPdf(s.id, modo)}
+                            disabled={s.status !== "SINCRONIZADO" || gerandoId === s.id}
+                            title={
+                              s.status === "SINCRONIZADO"
+                                ? rotulo
+                                : "Disponível após sincronizar com o servidor"
+                            }
+                            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40"
+                            style={{
+                              background: "var(--primary-soft)",
+                              color: "var(--primary-strong)",
+                            }}
+                          >
+                            {gerandoId === s.id ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : (
+                              <FileDown size={11} />
+                            )}
+                            {rotulo}
+                          </button>
+                        ))}
                         {ehAdmin && (
                           <>
                             <Link
