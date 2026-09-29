@@ -39,7 +39,11 @@ interface RascunhoGap {
 }
 
 const DIGITOS_INTEIROS_GAP = 3;
-const CASAS_DECIMAIS_GAP = 1;
+// A tolerância do GAP é de 0,50mm — os valores válidos são sempre "algo,00"
+// ou "algo,50", então a digitação precisa das 2 casas decimais completas
+// (ex.: "26050" vira "260,50"; "26000" vira "260,00"). Com 1 casa só, dava
+// pra digitar "2605" e virava "260,5" sem o zero final.
+const CASAS_DECIMAIS_GAP = 2;
 
 const TOLERANCIA_PADRAO = 0.5;
 
@@ -601,7 +605,7 @@ function GapForm() {
               <tr key={l.nCad}>
                 <td className="n-cad-cell">{l.nCad}</td>
                 <td className="text-center font-medium text-[var(--text-dim)]">
-                  {l.gapNominal.toFixed(1)}
+                  {l.gapNominal.toFixed(2).replace(".", ",")}
                 </td>
                 <td>
                   <input
