@@ -6,15 +6,19 @@ import { useLiveQuery } from "dexie-react-hooks";
 import {
   CalendarDays,
   ChevronDown,
+  AlertTriangle,
   FileDown,
   History,
   Loader2,
+  RefreshCw,
   Pencil,
   Trash2,
 } from "lucide-react";
 import { useAuthStore, listarTecnicos } from "@/lib/auth";
 import { db } from "@/lib/db/dexie";
-import { excluirSessao } from "@/lib/db/sync";
+import { excluirSessao, puxarAtualizacoes } from "@/lib/db/sync";
+import { contarForaPorSessao } from "@/lib/foraTolerancia";
+import { EVENTO_ULTIMA_ATUALIZACAO, lerUltimaAtualizacao } from "@/lib/ultimaSync";
 import { CalendarioMes } from "@/components/CalendarioMes";
 import type { Edicao, SessaoMedicao, Tecnico, TipoFicha } from "@/types";
 
@@ -42,6 +46,34 @@ export default function AdminHistoricoPage() {
     []
   );
   const edicoes = useLiveQuery(() => db.edicoes.toArray(), []);
+  const linhasGap = useLiveQuery(() => db.linhasGap.toArray(), []);
+  const leituras = useLiveQuery(() => db.leiturasSegmentos.toArray(), []);
+  const foraPorSessao = useMemo(
+    () => contarForaPorSessao(sessoes ?? [], linhasGap ?? [], leituras ?? []),
+    [sessoes, linhasGap, leituras]
+  );
+
+  const [ultimaAtualizacao, setUltimaAtualizacao] = useState<string | null>(null);
+  const [atualizando, setAtualizando] = useState(false);
+  useEffect(() => {
+    const ler = () => setUltimaAtualizacao(lerUltimaAtualizacao());
+    ler();
+    window.addEventListener(EVENTO_ULTIMA_ATUALIZACAO, ler);
+    return () => window.removeEventListener(EVENTO_ULTIMA_ATUALIZACAO, ler);
+  }, []);
+
+  async function atualizarAgora() {
+    setAtualizando(true);
+    try {
+      if (!navigator.onLine) {
+        alert("Sem conexão com a internet agora.");
+        return;
+      }
+      await puxarAtualizacoes();
+    } finally {
+      setAtualizando(false);
+    }
+  }
   const [filtroTecnico, setFiltroTecnico] = useState<string>("TODOS");
   const [expandido, setExpandido] = useState<string | null>(null);
   const [mostrarCalendario, setMostrarCalendario] = useState(false);
@@ -179,6 +211,28 @@ export default function AdminHistoricoPage() {
         </button>
       </div>
 
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-faint)]">
+        <span>
+          {ultimaAtualizacao
+            ? `Atualizado com o servidor em ${new Date(ultimaAtualizacao).toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}`
+            : "Ainda não atualizado com o servidor neste aparelho — a lista pode estar incompleta."}
+        </span>
+        <button
+          onClick={atualizarAgora}
+          disabled={atualizando}
+          className="flex items-center gap-1 rounded-md px-2 py-1 font-medium disabled:opacity-50"
+          style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
+        >
+          <RefreshCw size={11} className={atualizando ? "animate-spin" : undefined} />
+          Atualizar agora
+        </button>
+      </div>
+
       <select
         className="input mb-3"
         value={filtroTecnico}
@@ -251,6 +305,16 @@ export default function AdminHistoricoPage() {
                         >
                           {s.status === "SINCRONIZADO" ? "Sincronizado" : "Pendente"}
                         </span>
+                        {(foraPorSessao.get(s.id) ?? 0) > 0 && (
+                          <span
+                            className="badge flex items-center gap-1"
+                            style={{ background: "var(--danger-soft)", color: "#fca5a5" }}
+                            title="Pontos fora da tolerância (GAP: vale a 2ª medida quando feita)"
+                          >
+                            <AlertTriangle size={11} />
+                            {foraPorSessao.get(s.id)} fora da tolerância
+                          </span>
+                        )}
                         {(s.tipoFicha === "GAP"
                           ? ([
                               ["TUDO", "PDF ver tudo"],

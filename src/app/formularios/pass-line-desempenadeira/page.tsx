@@ -37,6 +37,7 @@ import {
   limparRascunhosAntigos,
   salvarRascunho,
 } from "@/lib/rascunho";
+import { verificarDuplicidade } from "@/lib/duplicidade";
 import { AvisoRascunho } from "@/components/forms/AvisoRascunho";
 
 interface RascunhoPassLineDesempenadeira {
@@ -194,6 +195,11 @@ function PassLineDesempenadeiraForm() {
     if (!tecnico) return;
     setSalvando(true);
     try {
+      const aviso = await verificarDuplicidade("PASS_LINE_DESEMPENADEIRA", header, linhas, sessaoId);
+      if (aviso && !window.confirm(aviso)) {
+        setSalvando(false);
+        return;
+      }
       if (sessaoId && headerOriginal) {
         if (await houveConflitoDeEdicao(sessaoId, sincronizadoEmOriginal)) {
           const continuar = window.confirm(
@@ -320,7 +326,11 @@ function PassLineDesempenadeiraForm() {
         />
       )}
 
-      <SessaoHeader value={header} onChange={handleHeaderChange} />
+      <SessaoHeader
+        value={header}
+        onChange={handleHeaderChange}
+        maquinas={["MCC2", "MCC3"]}
+      />
 
       <div className="surface scrollbar-thin max-h-[60vh] overflow-auto">
         <table className="table-industrial min-w-full text-sm">

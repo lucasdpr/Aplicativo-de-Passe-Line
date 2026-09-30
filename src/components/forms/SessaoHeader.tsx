@@ -18,12 +18,17 @@ export interface SessaoHeaderValue {
   liberadoPor: string;
 }
 
+const TODAS_MAQUINAS: Maquina[] = ["MCC2", "MCC3", "MCC4"];
+
 export function SessaoHeader({
   value,
   onChange,
+  maquinas = TODAS_MAQUINAS,
 }: {
   value: SessaoHeaderValue;
   onChange: (v: SessaoHeaderValue) => void;
+  /** Máquinas que têm essa ficha (ex.: GAP não existe na MCC4). */
+  maquinas?: Maquina[];
 }) {
   function set<K extends keyof SessaoHeaderValue>(
     key: K,
@@ -44,9 +49,11 @@ export function SessaoHeader({
           value={value.maquina}
           onChange={(e) => set("maquina", e.target.value as Maquina)}
         >
-          <option value="MCC2">MCC2</option>
-          <option value="MCC3">MCC3</option>
-          <option value="MCC4">MCC4</option>
+          {maquinas.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
         </select>
       </Campo>
 

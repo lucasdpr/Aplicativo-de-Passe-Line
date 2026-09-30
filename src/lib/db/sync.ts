@@ -1,4 +1,5 @@
 import { db } from "@/lib/db/dexie";
+import { marcarUltimaAtualizacao } from "@/lib/ultimaSync";
 import { buscarTodas } from "@/lib/buscarTodas";
 import { supabase } from "@/lib/supabase";
 import type { SessaoMedicao, TipoFicha } from "@/types";
@@ -237,6 +238,7 @@ async function puxarAtualizacoesAgora(): Promise<{ recebidos: number }> {
     recebidos++;
   }
 
+  marcarUltimaAtualizacao();
   return { recebidos };
 }
 
