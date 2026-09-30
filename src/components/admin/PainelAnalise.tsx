@@ -590,6 +590,9 @@ export function PainelAnalise() {
           </div>
 
           <div className="surface mt-3 overflow-x-auto p-0">
+            <h3 className="px-3 pt-3 text-xs font-semibold text-[var(--text-dim)]">
+              Todos os equipamentos (clique numa linha pra ver o detalhe acima)
+            </h3>
             <table className="w-full text-left text-xs">
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--border)" }}>
@@ -611,7 +614,10 @@ export function PainelAnalise() {
                       key={chave}
                       onClick={() => setSelecionado(chave)}
                       className="cursor-pointer transition hover:bg-[var(--surface-raised)]"
-                      style={{ borderBottom: "1px solid var(--border)" }}
+                      style={{
+                        borderBottom: "1px solid var(--border)",
+                        background: chave === selecionado ? "var(--primary-soft)" : undefined,
+                      }}
                     >
                       <td className="p-3 font-medium">
                         <div className="flex items-center gap-1.5">
