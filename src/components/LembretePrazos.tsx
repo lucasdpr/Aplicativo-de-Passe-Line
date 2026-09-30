@@ -3,9 +3,8 @@
 import { useEffect, useState } from "react";
 import { hojeIso } from "@/lib/datas";
 import { AlarmClock, X } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { lerDados } from "@/lib/lerDados";
 import {
-  buscarUltimasMedicoes,
   calcularPrazos,
   comboLabel,
   type PrazoCalculado,
@@ -31,11 +30,11 @@ export function LembretePrazos() {
   });
 
   useEffect(() => {
-    if (!supabase) return;
-    buscarUltimasMedicoes(supabase).then((ultimas) => {
+    lerDados<Record<string, string>>({ tipo: "ultimas" }).then((obj) => {
+      const ultimas = new Map(Object.entries(obj));
       const todos = calcularPrazos(ultimas);
       setPrazos(todos.filter((p) => p.diasRestantes <= 3));
-    });
+    }).catch(() => {});
   }, []);
 
   if (!prazos || prazos.length === 0) return null;

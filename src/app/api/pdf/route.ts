@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { gerarPdfSessao, type ModoPdfGap } from "@/lib/pdf/gerarPdf";
 import { exigirSessao } from "@/lib/sessaoServidor";
 import type {
@@ -40,15 +40,7 @@ export async function GET(req: NextRequest) {
   const modoGap: ModoPdfGap =
     req.nextUrl.searchParams.get("modo") === "ATUALIZADO" ? "ATUALIZADO" : "TUDO";
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    return NextResponse.json(
-      { error: "Supabase não configurado no servidor" },
-      { status: 500 }
-    );
-  }
-  const supabase = createClient(url, key);
+  const supabase = supabaseAdmin();
 
   const { data: sessaoRow, error: sessaoError } = await supabase
     .from("sessoes_medicao")
@@ -74,7 +66,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: linhasError.message }, { status: 500 });
   }
 
-  const linhas = (linhasRows ?? []).map((r) =>
+  const linhas = (linhasRows ?? []).map((r: Record<string, unknown>) =>
     fromSnakeCase<
       | LinhaPassLineDesempenadeira
       | LinhaGap

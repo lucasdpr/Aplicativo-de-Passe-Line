@@ -26,8 +26,8 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { supabase } from "@/lib/supabase";
-import { buscarAnaliseCombos, type AnaliseCombo, type PontoSerie } from "@/lib/analise";
+import { lerDados } from "@/lib/lerDados";
+import { type AnaliseCombo, type PontoSerie } from "@/lib/analise";
 
 function formatarData(dataIso: string): string {
   return new Date(`${dataIso}T00:00:00`).toLocaleDateString("pt-BR", {
@@ -145,14 +145,13 @@ export function PainelAnalise() {
   const [detalheNCadAberto, setDetalheNCadAberto] = useState(false);
 
   useEffect(() => {
-    if (!supabase) return;
-    buscarAnaliseCombos(supabase).then((resultado) => {
+    lerDados<AnaliseCombo[]>({ tipo: "analise" }).then((resultado) => {
       setCombos(resultado);
       const primeiroComDados = resultado.find((c) => c.serie.length > 1);
       if (primeiroComDados) {
         setSelecionado(`${primeiroComDados.tipoFicha}|${primeiroComDados.maquina}|${primeiroComDados.veio}`);
       }
-    });
+    }).catch(() => setCombos([]));
   }, []);
 
   const comDados = useMemo(() => (combos ?? []).filter((c) => c.serie.length > 0), [combos]);
