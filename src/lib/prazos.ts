@@ -16,14 +16,13 @@ const FICHAS_MONITORADAS: TipoFicha[] = [
 ];
 
 /**
- * Nem toda máquina tem as mesmas fichas — a MCC4 usa Pass-Line dos
- * Segmentos (não a Desempenadeira, que é só MCC2/MCC3) e GAP, mas não tem
- * Empeno e Desgaste.
+ * Nem toda máquina tem as mesmas fichas — a MCC4 só tem Pass-Line dos
+ * Segmentos (sem Desempenadeira, GAP ou Empeno e Desgaste).
  */
 const FICHAS_POR_MAQUINA: Record<Maquina, TipoFicha[]> = {
   MCC2: FICHAS_MONITORADAS,
   MCC3: FICHAS_MONITORADAS,
-  MCC4: ["PASS_LINE_SEGMENTOS", "GAP"],
+  MCC4: ["PASS_LINE_SEGMENTOS"],
 };
 
 const NOMES_FICHA: Record<TipoFicha, string> = {

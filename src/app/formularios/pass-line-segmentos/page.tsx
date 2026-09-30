@@ -25,6 +25,7 @@ import {
   limparRascunhosAntigos,
   salvarRascunho,
 } from "@/lib/rascunho";
+import { verificarDuplicidade } from "@/lib/duplicidade";
 import { AvisoRascunho } from "@/components/forms/AvisoRascunho";
 import {
   SEGMENTOS_PADRAO,
@@ -236,6 +237,11 @@ function PassLineSegmentosForm() {
     if (!tecnico) return;
     setSalvando(true);
     try {
+      const aviso = await verificarDuplicidade("PASS_LINE_SEGMENTOS", header, leituras, sessaoId);
+      if (aviso && !window.confirm(aviso)) {
+        setSalvando(false);
+        return;
+      }
       if (sessaoId && headerOriginal) {
         if (await houveConflitoDeEdicao(sessaoId, sincronizadoEmOriginal)) {
           const continuar = window.confirm(

@@ -31,6 +31,7 @@ import {
   limparRascunhosAntigos,
   salvarRascunho,
 } from "@/lib/rascunho";
+import { verificarDuplicidade } from "@/lib/duplicidade";
 import { AvisoRascunho } from "@/components/forms/AvisoRascunho";
 
 interface RascunhoGap {
@@ -438,6 +439,11 @@ function GapForm() {
     if (!tecnico) return;
     setSalvando(true);
     try {
+      const aviso = await verificarDuplicidade("GAP", header, linhas, sessaoId);
+      if (aviso && !window.confirm(aviso)) {
+        setSalvando(false);
+        return;
+      }
       if (sessaoId && headerOriginal) {
         if (await houveConflitoDeEdicao(sessaoId, sincronizadoEmOriginal)) {
           const continuar = window.confirm(
@@ -560,7 +566,11 @@ function GapForm() {
         />
       )}
 
-      <SessaoHeader value={header} onChange={handleHeaderChange} />
+      <SessaoHeader
+        value={header}
+        onChange={handleHeaderChange}
+        maquinas={["MCC2", "MCC3"]}
+      />
 
       <p
         className="rounded-lg px-3 py-2 text-xs"

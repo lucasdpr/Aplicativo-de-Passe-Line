@@ -55,6 +55,10 @@ function corDaVariacao(combo: AnaliseCombo): string {
   return piorando ? "#fca5a5" : "var(--success)";
 }
 
+function rotuloPosicao(tipoFicha: AnaliseCombo["tipoFicha"]) {
+  return tipoFicha === "PASS_LINE_SEGMENTOS" ? "Segmento" : "Nº CAD";
+}
+
 const SIGLA_FICHA: Record<AnaliseCombo["tipoFicha"], string> = {
   PASS_LINE_DESEMPENADEIRA: "PL-D",
   GAP: "GAP",
@@ -413,7 +417,7 @@ export function PainelAnalise() {
                       style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
                     >
                       <span className="font-semibold text-[var(--text)]">
-                        Nº CAD {comboAtivo.piorPonto.nCad}: {comboAtivo.piorPonto.valor.toFixed(3)}mm
+                        {rotuloPosicao(comboAtivo.tipoFicha)} {comboAtivo.piorPonto.nCad}: {comboAtivo.piorPonto.valor.toFixed(3)}mm
                       </span>
                       <span>
                         pior ponto já registrado · {formatarDataLonga(comboAtivo.piorPonto.data)}
@@ -481,7 +485,7 @@ export function PainelAnalise() {
                       className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium"
                       style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
                     >
-                      <span>Detalhe por Nº CAD ({comboAtivo.detalhePorNCad.length} posições)</span>
+                      <span>Detalhe por {rotuloPosicao(comboAtivo.tipoFicha)} ({comboAtivo.detalhePorNCad.length} posições)</span>
                       {detalheNCadAberto ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                     </button>
                     {detalheNCadAberto && (
@@ -489,7 +493,9 @@ export function PainelAnalise() {
                         <table className="w-full text-left text-xs">
                           <thead>
                             <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                              <th className="p-2 font-medium text-[var(--text-dim)]">Nº CAD</th>
+                              <th className="p-2 font-medium text-[var(--text-dim)]">
+                                {rotuloPosicao(comboAtivo.tipoFicha)}
+                              </th>
                               <th className="p-2 font-medium text-[var(--text-dim)]">Último valor</th>
                               <th className="p-2 font-medium text-[var(--text-dim)]">Pior já visto</th>
                             </tr>
@@ -638,7 +644,7 @@ export function PainelAnalise() {
                         </div>
                       </td>
                       <td className="p-3 text-[var(--text-dim)]">
-                        {c.piorPonto ? `Nº ${c.piorPonto.nCad} (${c.piorPonto.valor.toFixed(3)}mm)` : "—"}
+                        {c.piorPonto ? `${rotuloPosicao(c.tipoFicha)} ${c.piorPonto.nCad} (${c.piorPonto.valor.toFixed(3)}mm)` : "—"}
                       </td>
                       <td className="p-3 text-[var(--text-dim)]">
                         {c.foraToleranciaPct === null ? "—" : `${c.foraToleranciaPct.toFixed(1)}%`}

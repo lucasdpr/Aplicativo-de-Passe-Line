@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buscarTodas } from "@/lib/buscarTodas";
 import { hojeIso } from "@/lib/datas";
-import type { Maquina, TipoFicha, Veio } from "@/types";
+import { TOLERANCIAS, type Maquina, type TipoFicha, type Veio } from "@/types";
 import { comboLabel, intervaloDias, type Combo } from "@/lib/prazos";
 
 const VEIOS_POR_MAQUINA: Record<Maquina, Veio[]> = {
@@ -16,16 +16,18 @@ const FICHAS_COM_ANALISE: TipoFicha[] = [
   "EMPENO_DESGASTE",
 ];
 
-/**
- * MCC4 tem GAP, mas a Análise ainda não sabe calcular tendência pro
- * Pass-Line dos Segmentos (estrutura por segmento, não por Nº CAD) —
- * só GAP entra aqui até isso ser construído.
- */
+/** A MCC4 só tem Pass-Line dos Segmentos (por segmento 1–17, não por Nº CAD). */
 const FICHAS_COM_ANALISE_POR_MAQUINA: Record<Maquina, TipoFicha[]> = {
   MCC2: FICHAS_COM_ANALISE,
   MCC3: FICHAS_COM_ANALISE,
-  MCC4: ["GAP"],
+  MCC4: ["PASS_LINE_SEGMENTOS"],
 };
+
+function toleranciaSegmentos(maquina: Maquina): number {
+  return maquina === "MCC4"
+    ? TOLERANCIAS.PASS_LINE_SEGMENTOS_MCC4
+    : TOLERANCIAS.PASS_LINE_SEGMENTOS;
+}
 
 function todosOsCombosAnalise(): Combo[] {
   const combos: Combo[] = [];
@@ -201,7 +203,13 @@ export async function buscarAnaliseCombos(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any, any, any>
 ): Promise<AnaliseCombo[]> {
-  const [{ data: sessoesRaw }, { data: passLine }, { data: gap }, { data: empeno }] =
+  const [
+    { data: sessoesRaw },
+    { data: passLine },
+    { data: gap },
+    { data: empeno },
+    { data: segmentos },
+  ] =
     await Promise.all([
       // Tudo em páginas de 1000 (limite da API) — linhas_gap já passou disso.
       buscarTodas<Record<string, unknown>>((de, ate) =>
@@ -232,6 +240,13 @@ export async function buscarAnaliseCombos(
         supabase
           .from("linhas_empeno_desgaste")
           .select("sessao_id, n_cad, desgaste_superior, desgaste_inferior, desgaste_par")
+          .order("id")
+          .range(de, ate)
+      ),
+      buscarTodas<Record<string, unknown>>((de, ate) =>
+        supabase
+          .from("leituras_segmentos")
+          .select("sessao_id, segmento, valor")
           .order("id")
           .range(de, ate)
       ),
@@ -327,6 +342,30 @@ export async function buscarAnaliseCombos(
       valor: novaSoma / novoTotal,
       fora: atual.fora + foraAqui,
       total: novoTotal,
+    });
+  }
+
+  // Pass-Line dos Segmentos: cada leitura já é o desvio (mm) do rolo em
+  // relação à régua. O "Nº CAD" aqui é o número do segmento.
+  for (const linha of segmentos ?? []) {
+    const sessaoId = linha.sessao_id as string;
+    const sessao = sessaoPorId.get(sessaoId);
+    if (!sessao || linha.valor === null || linha.valor === undefined) continue;
+    const segmento = Number(linha.segmento);
+    if (!Number.isFinite(segmento)) continue;
+    const valor = Math.abs(Number(linha.valor));
+    const tolerancia = toleranciaSegmentos(sessao.maquina);
+    const comboAgregado = comboDaSessao(sessao);
+    atualizarPior(comboAgregado, { nCad: segmento, valor, data: sessao.data }, false);
+    atualizarNCad(comboAgregado, segmento, valor, sessao.data, false);
+    comboAgregado.somaTolerancia += tolerancia;
+    comboAgregado.contagemTolerancia += 1;
+    const atual = agregadoPorSessao.get(sessaoId) ?? { valor: null, fora: 0, total: 0 };
+    const somaAnterior = (atual.valor ?? 0) * atual.total;
+    agregadoPorSessao.set(sessaoId, {
+      valor: (somaAnterior + valor) / (atual.total + 1),
+      fora: atual.fora + (valor > tolerancia + 1e-9 ? 1 : 0),
+      total: atual.total + 1,
     });
   }
 
@@ -530,6 +569,8 @@ function descricaoDoValor(tipoFicha: TipoFicha): string {
       return "Desvio médio do GAP nominal";
     case "EMPENO_DESGASTE":
       return "Diâmetro médio do rolo";
+    case "PASS_LINE_SEGMENTOS":
+      return "Desvio médio dos segmentos";
     default:
       return "Valor médio";
   }
