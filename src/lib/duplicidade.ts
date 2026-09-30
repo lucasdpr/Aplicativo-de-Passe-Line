@@ -28,11 +28,6 @@ function linhasNormalizadas(linhas: object[]): string[] {
     .sort();
 }
 
-// Duas medições de verdade quase nunca repetem a linha inteira (3 leituras
-// com décimos). Se muitas linhas batem, é a mesma folha lançada de novo.
-const MIN_LINHAS_IGUAIS = 5;
-const FRACAO_LINHAS_IGUAIS = 0.3;
-
 async function linhasDaSessao(tipoFicha: TipoFicha, sessaoId: string): Promise<object[]> {
   switch (tipoFicha) {
     case "GAP":
@@ -81,9 +76,6 @@ export async function verificarDuplicidade(
     const iguais = delas.filter((l) => conjunto.has(l)).length;
     if (iguais === minhas.length && iguais === delas.length) {
       return `Os valores desta medição são idênticos aos da medição de ${dataBr(s.data)} (${s.tecnicoNome}) para ${header.maquina} veio ${header.veio}. Pode ser a mesma folha lançada de novo. Salvar mesmo assim?`;
-    }
-    if (iguais >= MIN_LINHAS_IGUAIS && iguais >= minhas.length * FRACAO_LINHAS_IGUAIS) {
-      return `${iguais} das ${minhas.length} linhas desta medição são idênticas às da medição de ${dataBr(s.data)} (${s.tecnicoNome}) para ${header.maquina} veio ${header.veio}. Parece a mesma folha lançada de novo — se for, edite aquela em vez de criar outra. Confira também a data. Salvar mesmo assim?`;
     }
   }
   return null;
