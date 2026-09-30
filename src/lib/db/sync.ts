@@ -1,15 +1,7 @@
 import { db } from "@/lib/db/dexie";
 import { marcarUltimaAtualizacao } from "@/lib/ultimaSync";
-import { buscarTodas } from "@/lib/buscarTodas";
-import { supabase } from "@/lib/supabase";
+import { lerDados } from "@/lib/lerDados";
 import type { SessaoMedicao, TipoFicha } from "@/types";
-
-const TABELA_POR_TIPO: Record<TipoFicha, string> = {
-  PASS_LINE_DESEMPENADEIRA: "linhas_pass_line_desempenadeira",
-  GAP: "linhas_gap",
-  EMPENO_DESGASTE: "linhas_empeno_desgaste",
-  PASS_LINE_SEGMENTOS: "leituras_segmentos",
-};
 
 const TABELA_LOCAL_POR_TIPO = {
   PASS_LINE_DESEMPENADEIRA: db.linhasPassLineDesempenadeira,
@@ -80,9 +72,6 @@ async function enviarPendentes(): Promise<{
   falhas: number;
   erros: string[];
 }> {
-  if (!supabase) {
-    return { enviados: 0, falhas: 0, erros: ["Supabase não configurado."] };
-  }
   if (!navigator.onLine) {
     return { enviados: 0, falhas: 0, erros: [] };
   }
@@ -145,18 +134,12 @@ function fromSnakeCase<T>(row: Record<string, unknown>): T {
   return out as T;
 }
 
-async function buscarLinhasRemotasEGravar(
+async function gravarLinhasRemotas(
   tipoFicha: TipoFicha,
-  sessaoId: string
+  sessaoId: string,
+  linhasRemotas: Record<string, unknown>[]
 ) {
-  if (!supabase) return;
   const linhasTable = TABELA_LOCAL_POR_TIPO[tipoFicha];
-  const { data: linhasRemotas } = await supabase
-    .from(TABELA_POR_TIPO[tipoFicha])
-    .select("*")
-    .eq("sessao_id", sessaoId);
-
-  if (!linhasRemotas) return;
   await linhasTable.where("sessaoId").equals(sessaoId).delete();
   const novasLinhas = linhasRemotas.map((linha) => {
     const { sessao_id, id, ...resto } = linha;
@@ -182,15 +165,16 @@ async function buscarLinhasRemotasEGravar(
 export const puxarAtualizacoes = umaPorVez("puxar", puxarAtualizacoesAgora);
 
 async function puxarAtualizacoesAgora(): Promise<{ recebidos: number }> {
-  if (!supabase || !navigator.onLine) return { recebidos: 0 };
+  if (!navigator.onLine) return { recebidos: 0 };
 
-  const cliente = supabase;
-  // Em páginas: com mais de 1000 medições, a lista vinha cortada e o código
-  // abaixo apagava deste aparelho as que "não existiam" no servidor.
-  const { data: indice, error } = await buscarTodas<Record<string, unknown>>((de, ate) =>
-    cliente.from("sessoes_medicao").select("id, tipo_ficha, atualizado_em").order("id").range(de, ate)
-  );
-  if (error) return { recebidos: 0 };
+  // O servidor pagina (limite de 1000 por consulta); se a lista viesse
+  // cortada, o código abaixo apagaria deste aparelho as que "não existiam".
+  let indice: Record<string, unknown>[];
+  try {
+    indice = await lerDados<Record<string, unknown>[]>({ tipo: "indice" });
+  } catch {
+    return { recebidos: 0 };
+  }
 
   const idsRemotos = new Set(indice.map((r) => r.id as string));
 
@@ -220,11 +204,13 @@ async function puxarAtualizacoesAgora(): Promise<{ recebidos: number }> {
     // Já temos essa versão (ou mais nova) localmente, não precisa rebaixar.
     if (local?.sincronizadoEm && local.sincronizadoEm >= atualizadoEm) continue;
 
-    const { data: row } = await supabase
-      .from("sessoes_medicao")
-      .select("*")
-      .eq("id", id)
-      .single();
+    let resposta: { sessao: Record<string, unknown> | null; linhas: Record<string, unknown>[] };
+    try {
+      resposta = await lerDados({ tipo: "sessao", id });
+    } catch {
+      continue;
+    }
+    const row = resposta.sessao;
     if (!row) continue;
 
     const remota = fromSnakeCase<SessaoMedicao>(row);
@@ -234,7 +220,7 @@ async function puxarAtualizacoesAgora(): Promise<{ recebidos: number }> {
       sincronizadoEm: atualizadoEm,
     });
 
-    await buscarLinhasRemotasEGravar(tipoFicha, id);
+    await gravarLinhasRemotas(tipoFicha, id, resposta.linhas);
     recebidos++;
   }
 
@@ -250,14 +236,17 @@ export async function houveConflitoDeEdicao(
   sessaoId: string,
   atualizadoEmConhecido: string | undefined
 ): Promise<boolean> {
-  if (!supabase || !navigator.onLine || !atualizadoEmConhecido) return false;
-  const { data } = await supabase
-    .from("sessoes_medicao")
-    .select("atualizado_em")
-    .eq("id", sessaoId)
-    .single();
-  if (!data) return false;
-  return (data.atualizado_em as string) > atualizadoEmConhecido;
+  if (!navigator.onLine || !atualizadoEmConhecido) return false;
+  try {
+    const { sessao } = await lerDados<{ sessao: { atualizado_em: string } | null }>({
+      tipo: "sessao",
+      id: sessaoId,
+      soMeta: "1",
+    });
+    return !!sessao && sessao.atualizado_em > atualizadoEmConhecido;
+  } catch {
+    return false;
+  }
 }
 
 /** Exclui uma medição (local e, se já sincronizada, também no Supabase). */

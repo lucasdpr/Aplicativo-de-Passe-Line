@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { AlarmClock, CheckCircle2, CircleHelp } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { lerDados } from "@/lib/lerDados";
 import {
-  buscarUltimasMedicoes,
   calcularPrazos,
   comboLabel,
   todosOsCombos,
@@ -24,15 +23,15 @@ export function PainelPrazos() {
   const [semHistorico, setSemHistorico] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!supabase) return;
-    buscarUltimasMedicoes(supabase).then((ultimas) => {
+    lerDados<Record<string, string>>({ tipo: "ultimas" }).then((obj) => {
+      const ultimas = new Map(Object.entries(obj));
       setPrazos(calcularPrazos(ultimas));
       setSemHistorico(
         todosOsCombos()
           .filter((c) => !ultimas.has(chaveCombo(c)))
           .map((c) => comboLabel(c))
       );
-    });
+    }).catch(() => {});
   }, []);
 
   return (
