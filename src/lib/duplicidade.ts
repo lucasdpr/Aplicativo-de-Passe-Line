@@ -15,17 +15,17 @@ const CAMPOS_ESTRUTURAIS = new Set([
   "posicao",
 ]);
 
-function assinatura(linhas: object[]): string {
-  const normalizadas = linhas
+function linhasNormalizadas(linhas: object[]): string[] {
+  return linhas
     .map((l) =>
       Object.entries(l)
         .filter(([k, v]) => k !== "id" && k !== "sessaoId" && v !== undefined && v !== null && v !== "")
+        .map(([k, v]) => [k, typeof v === "number" ? Number(v) : v] as const)
         .sort(([a], [b]) => a.localeCompare(b))
     )
     .filter((entradas) => entradas.some(([k]) => !CAMPOS_ESTRUTURAIS.has(k)))
     .map((entradas) => JSON.stringify(entradas))
     .sort();
-  return normalizadas.join("\n");
 }
 
 async function linhasDaSessao(tipoFicha: TipoFicha, sessaoId: string): Promise<object[]> {
@@ -68,10 +68,13 @@ export async function verificarDuplicidade(
     return `Já existe uma medição desta ficha para ${header.maquina} veio ${header.veio} no dia ${dataBr(header.data)} (${mesmoDia.tecnicoNome}). Salvar mesmo assim?`;
   }
 
-  const minha = assinatura(linhas);
-  if (!minha) return null;
+  const minhas = linhasNormalizadas(linhas);
+  if (minhas.length === 0) return null;
+  const conjunto = new Set(minhas);
   for (const s of outras) {
-    if (assinatura(await linhasDaSessao(tipoFicha, s.id)) === minha) {
+    const delas = linhasNormalizadas(await linhasDaSessao(tipoFicha, s.id));
+    const iguais = delas.filter((l) => conjunto.has(l)).length;
+    if (iguais === minhas.length && iguais === delas.length) {
       return `Os valores desta medição são idênticos aos da medição de ${dataBr(s.data)} (${s.tecnicoNome}) para ${header.maquina} veio ${header.veio}. Pode ser a mesma folha lançada de novo. Salvar mesmo assim?`;
     }
   }

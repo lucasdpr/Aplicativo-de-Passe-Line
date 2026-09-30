@@ -48,9 +48,11 @@ export default function AdminHistoricoPage() {
   const edicoes = useLiveQuery(() => db.edicoes.toArray(), []);
   const linhasGap = useLiveQuery(() => db.linhasGap.toArray(), []);
   const leituras = useLiveQuery(() => db.leiturasSegmentos.toArray(), []);
+  const linhasDesempenadeira = useLiveQuery(() => db.linhasPassLineDesempenadeira.toArray(), []);
   const foraPorSessao = useMemo(
-    () => contarForaPorSessao(sessoes ?? [], linhasGap ?? [], leituras ?? []),
-    [sessoes, linhasGap, leituras]
+    () =>
+      contarForaPorSessao(sessoes ?? [], linhasGap ?? [], leituras ?? [], linhasDesempenadeira ?? []),
+    [sessoes, linhasGap, leituras, linhasDesempenadeira]
   );
 
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState<string | null>(null);
