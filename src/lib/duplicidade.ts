@@ -15,18 +15,23 @@ const CAMPOS_ESTRUTURAIS = new Set([
   "posicao",
 ]);
 
-function assinatura(linhas: object[]): string {
-  const normalizadas = linhas
+function linhasNormalizadas(linhas: object[]): string[] {
+  return linhas
     .map((l) =>
       Object.entries(l)
         .filter(([k, v]) => k !== "id" && k !== "sessaoId" && v !== undefined && v !== null && v !== "")
+        .map(([k, v]) => [k, typeof v === "number" ? Number(v) : v] as const)
         .sort(([a], [b]) => a.localeCompare(b))
     )
     .filter((entradas) => entradas.some(([k]) => !CAMPOS_ESTRUTURAIS.has(k)))
     .map((entradas) => JSON.stringify(entradas))
     .sort();
-  return normalizadas.join("\n");
 }
+
+// Duas medições de verdade quase nunca repetem a linha inteira (3 leituras
+// com décimos). Se muitas linhas batem, é a mesma folha lançada de novo.
+const MIN_LINHAS_IGUAIS = 5;
+const FRACAO_LINHAS_IGUAIS = 0.3;
 
 async function linhasDaSessao(tipoFicha: TipoFicha, sessaoId: string): Promise<object[]> {
   switch (tipoFicha) {
@@ -68,11 +73,17 @@ export async function verificarDuplicidade(
     return `Já existe uma medição desta ficha para ${header.maquina} veio ${header.veio} no dia ${dataBr(header.data)} (${mesmoDia.tecnicoNome}). Salvar mesmo assim?`;
   }
 
-  const minha = assinatura(linhas);
-  if (!minha) return null;
+  const minhas = linhasNormalizadas(linhas);
+  if (minhas.length === 0) return null;
+  const conjunto = new Set(minhas);
   for (const s of outras) {
-    if (assinatura(await linhasDaSessao(tipoFicha, s.id)) === minha) {
+    const delas = linhasNormalizadas(await linhasDaSessao(tipoFicha, s.id));
+    const iguais = delas.filter((l) => conjunto.has(l)).length;
+    if (iguais === minhas.length && iguais === delas.length) {
       return `Os valores desta medição são idênticos aos da medição de ${dataBr(s.data)} (${s.tecnicoNome}) para ${header.maquina} veio ${header.veio}. Pode ser a mesma folha lançada de novo. Salvar mesmo assim?`;
+    }
+    if (iguais >= MIN_LINHAS_IGUAIS && iguais >= minhas.length * FRACAO_LINHAS_IGUAIS) {
+      return `${iguais} das ${minhas.length} linhas desta medição são idênticas às da medição de ${dataBr(s.data)} (${s.tecnicoNome}) para ${header.maquina} veio ${header.veio}. Parece a mesma folha lançada de novo — se for, edite aquela em vez de criar outra. Confira também a data. Salvar mesmo assim?`;
     }
   }
   return null;

@@ -223,7 +223,7 @@ export async function buscarAnaliseCombos(
       buscarTodas<Record<string, unknown>>((de, ate) =>
         supabase
           .from("linhas_pass_line_desempenadeira")
-          .select("sessao_id, n_cad, oeste_ajuste, leste_ajuste")
+          .select("sessao_id, n_cad, oeste_medida, oeste_acionado, leste_medida, leste_acionado")
           .order("id")
           .range(de, ate)
       ),
@@ -281,12 +281,12 @@ export async function buscarAnaliseCombos(
     if (!sessao) continue;
     const nCad = Number(linha.n_cad);
     const comboAgregado = comboDaSessao(sessao);
+    // As leituras entre rolo e régua (tolerância ±0,50). O "ajuste" é quanto
+    // se mexeu, não a leitura — e quase sempre fica vazio.
     const valores: { lado: string; valor: number }[] = [];
-    if (linha.oeste_ajuste !== null && linha.oeste_ajuste !== undefined) {
-      valores.push({ lado: "oeste", valor: Math.abs(Number(linha.oeste_ajuste)) });
-    }
-    if (linha.leste_ajuste !== null && linha.leste_ajuste !== undefined) {
-      valores.push({ lado: "leste", valor: Math.abs(Number(linha.leste_ajuste)) });
+    for (const campo of ["oeste_medida", "oeste_acionado", "leste_medida", "leste_acionado"]) {
+      const v = linha[campo];
+      if (v !== null && v !== undefined) valores.push({ lado: campo, valor: Math.abs(Number(v)) });
     }
     if (valores.length === 0) continue;
     for (const v of valores) {
@@ -297,7 +297,7 @@ export async function buscarAnaliseCombos(
     const somaAnterior = (atual.valor ?? 0) * atual.total;
     const novoTotal = atual.total + valores.length;
     const novaSoma = somaAnterior + valores.reduce((a, b) => a + b.valor, 0);
-    const foraAqui = valores.filter((v) => v.valor > 0.5).length;
+    const foraAqui = valores.filter((v) => v.valor > 0.5 + 1e-9).length;
     agregadoPorSessao.set(sessaoId, {
       valor: novaSoma / novoTotal,
       fora: atual.fora + foraAqui,
@@ -564,7 +564,7 @@ export async function buscarAnaliseCombos(
 function descricaoDoValor(tipoFicha: TipoFicha): string {
   switch (tipoFicha) {
     case "PASS_LINE_DESEMPENADEIRA":
-      return "Ajuste médio aplicado";
+      return "Folga média entre rolo e régua";
     case "GAP":
       return "Desvio médio do GAP nominal";
     case "EMPENO_DESGASTE":
