@@ -51,8 +51,8 @@ export async function PATCH(
   }
 
   if (body.acao === "resetarPin") {
-    if (!body.novoPin || String(body.novoPin).length < 4) {
-      return NextResponse.json({ error: "PIN precisa ter pelo menos 4 dígitos" }, { status: 400 });
+    if (!/^\d{4,8}$/.test(String(body.novoPin ?? ""))) {
+      return NextResponse.json({ error: "O PIN precisa ter de 4 a 8 números" }, { status: 400 });
     }
     const pinHash = await gerarHashPin(String(body.novoPin));
     const { error } = await admin.from("tecnicos").update({ pin_hash: pinHash }).eq("id", id);

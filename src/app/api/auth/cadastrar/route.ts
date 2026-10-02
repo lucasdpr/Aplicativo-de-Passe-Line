@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
   if (!nome || !matricula || !funcao || !pin) {
     return NextResponse.json({ error: "Preencha todos os campos" }, { status: 400 });
   }
-  if (String(pin).length < 4) {
-    return NextResponse.json({ error: "O PIN precisa ter pelo menos 4 dígitos" }, { status: 400 });
+  if (!/^\d{4,8}$/.test(String(pin))) {
+    return NextResponse.json({ error: "O PIN precisa ter de 4 a 8 números" }, { status: 400 });
   }
 
   const nomePadronizado = String(nome).trim().toUpperCase();
