@@ -45,11 +45,11 @@ export default function AdminTecnicosPage() {
 
   async function handleResetarPin(id: string, nome: string) {
     const novoPin = window.prompt(
-      `Novo PIN para ${nome} (mínimo 4 dígitos):`
+      `Novo PIN para ${nome} (de 4 a 8 números):`
     );
     if (!novoPin) return;
-    if (novoPin.length < 4) {
-      alert("O PIN precisa ter pelo menos 4 dígitos.");
+    if (!/^\d{4,8}$/.test(novoPin)) {
+      alert("O PIN precisa ter de 4 a 8 números.");
       return;
     }
     setResetandoId(id);

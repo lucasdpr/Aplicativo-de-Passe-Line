@@ -71,8 +71,8 @@ export default function LoginPage() {
     e.preventDefault();
     setErro("");
     setAviso("");
-    if (pin.length < 4) {
-      setErro("O PIN precisa ter pelo menos 4 dígitos.");
+    if (!/^\d{4,8}$/.test(pin)) {
+      setErro("O PIN precisa ter de 4 a 8 números.");
       return;
     }
     setCarregando(true);
