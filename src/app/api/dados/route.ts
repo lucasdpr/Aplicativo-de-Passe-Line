@@ -13,6 +13,7 @@ const TABELA_POR_TIPO: Record<TipoFicha, string> = {
   GAP: "linhas_gap",
   EMPENO_DESGASTE: "linhas_empeno_desgaste",
   PASS_LINE_SEGMENTOS: "leituras_segmentos",
+  GAP_MCC4: "linhas_gap_mcc4",
 };
 
 /**

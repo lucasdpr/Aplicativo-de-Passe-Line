@@ -18,6 +18,7 @@ const TABELA_POR_TIPO: Record<TipoFicha, string> = {
   GAP: "linhas_gap",
   EMPENO_DESGASTE: "linhas_empeno_desgaste",
   PASS_LINE_SEGMENTOS: "leituras_segmentos",
+  GAP_MCC4: "linhas_gap_mcc4",
 };
 
 function fromSnakeCase<T>(row: Record<string, unknown>): T {
@@ -81,7 +82,16 @@ export async function GET(req: NextRequest) {
     modoGap
   );
 
-  const sufixoModo = sessao.tipoFicha === "GAP" && modoGap === "ATUALIZADO" ? "-atualizado" : "";
+  const sufixoModo =
+    modoGap !== "ATUALIZADO"
+      ? ""
+      : sessao.tipoFicha === "GAP"
+        ? "-atualizado"
+        : sessao.tipoFicha === "GAP_MCC4"
+          ? "-medida-final"
+          : sessao.tipoFicha === "PASS_LINE_SEGMENTOS"
+            ? "-dentes"
+            : "";
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {
       "Content-Type": "application/pdf",

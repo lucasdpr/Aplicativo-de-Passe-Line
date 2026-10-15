@@ -8,7 +8,8 @@ export type TipoFicha =
   | "PASS_LINE_DESEMPENADEIRA"
   | "GAP"
   | "EMPENO_DESGASTE"
-  | "PASS_LINE_SEGMENTOS";
+  | "PASS_LINE_SEGMENTOS"
+  | "GAP_MCC4";
 
 export type PapelTecnico = "TECNICO" | "VISUALIZADOR" | "ADMIN";
 
@@ -109,6 +110,45 @@ export interface LeituraSegmento {
   lado: LadoSegmento;
   posicao: number; // position index within the segment diagram
   valor?: number;
+}
+
+// --- Form 5: GAP da MCC4 (ficha própria, por segmento) ---
+export type PontoGapMcc4 = "ENTRADA" | "SAIDA";
+
+/**
+ * Uma célula da "Planilha de medição e ajuste GAP da MCC #4": segmento 1–17,
+ * entrada ou saída, lado acionado ou não. "ajuste" é quantos mm de calço
+ * foram colocados pra levar ao padrão (a medida depois do calço não é
+ * anotada). "aberto": segmento aberto (rolos travados, vira só mesa no fim
+ * da linha) — não mantém GAP, então fica sem medida e não conta como fora.
+ */
+export interface LinhaGapMcc4 {
+  segmento: number;
+  ponto: PontoGapMcc4;
+  lado: LadoSegmento;
+  medicao?: number;
+  ajuste?: number;
+  aberto?: boolean;
+}
+
+export const GAP_MCC4 = { nominal: 255.0, tolerancia: 0.5, segmentos: 17 } as const;
+
+export function foraGapMcc4(valor: number | undefined | null): boolean {
+  if (valor === undefined || valor === null) return false;
+  return Math.abs(Number(valor) - GAP_MCC4.nominal) > GAP_MCC4.tolerancia + 1e-9;
+}
+
+export type SituacaoGapMcc4 = "OK" | "FORA" | "AJUSTADO" | "ABERTO";
+
+/**
+ * OK: medição dentro. FORA: medição fora e sem calço. AJUSTADO: medição fora
+ * e calço registrado (levado ao padrão). ABERTO: sem medida.
+ */
+export function situacaoGapMcc4(l: LinhaGapMcc4): SituacaoGapMcc4 | undefined {
+  if (l.aberto) return "ABERTO";
+  if (l.medicao === undefined || l.medicao === null) return undefined;
+  if (!foraGapMcc4(l.medicao)) return "OK";
+  return l.ajuste !== undefined && l.ajuste !== null && Number(l.ajuste) !== 0 ? "AJUSTADO" : "FORA";
 }
 
 export const TOLERANCIAS = {

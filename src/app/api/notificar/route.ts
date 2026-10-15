@@ -11,6 +11,7 @@ const NOMES_FICHA: Record<TipoFicha, string> = {
   GAP: "GAP",
   EMPENO_DESGASTE: "Empeno e Desgaste",
   PASS_LINE_SEGMENTOS: "Pass-Line dos Segmentos",
+  GAP_MCC4: "GAP (MCC4)",
 };
 
 /**

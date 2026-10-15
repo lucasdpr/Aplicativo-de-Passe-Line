@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Fragment, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuid } from "uuid";
 import { ArrowLeft, Layers, Plus, X } from "lucide-react";
@@ -26,6 +26,15 @@ import {
   salvarRascunho,
 } from "@/lib/rascunho";
 import { verificarDuplicidade } from "@/lib/duplicidade";
+import {
+  JUNCOES_MCC4,
+  POSICAO_ENTRADA,
+  POSICAO_SAIDA,
+  SEGMENTO_BENDER,
+  TOLERANCIA_DENTE_MCC4,
+  calcularDente,
+  denteFora,
+} from "@/lib/passLineMcc4";
 import { AvisoRascunho } from "@/components/forms/AvisoRascunho";
 import {
   SEGMENTOS_PADRAO,
@@ -42,13 +51,16 @@ interface RascunhoPassLineSegmentos {
   leituras: LeituraSegmento[];
 }
 
-const POSICOES_INICIAIS = 4;
+// Na MCC4 são 2 pontos por lado (1º e último rolo); nas MCC2/MCC3, 4.
+function posicoesIniciais(maquina: Maquina) {
+  return maquina === "MCC4" ? 2 : 4;
+}
 const LADOS: { key: LadoSegmento; label: string }[] = [
   { key: "ACIONADO", label: "Lado Acionado" },
   { key: "NAO_ACIONADO", label: "Lado Não Acionado" },
 ];
 
-// A MCC4 usa segmentos numerados 1–8 (não tem "0" nem "D"), com tolerância
+// A MCC4 usa segmentos numerados 1–17 (não tem "0" nem "D"), com tolerância
 // própria — as demais (MCC2/MCC3) usam os segmentos padrão 0–6 e D.
 function segmentosDaMaquina(maquina: Maquina): string[] {
   return maquina === "MCC4" ? SEGMENTOS_MCC4 : SEGMENTOS_PADRAO;
@@ -60,9 +72,15 @@ function toleranciaDaMaquina(maquina: Maquina): number {
 
 function estadoInicial(maquina: Maquina): LeituraSegmento[] {
   const leituras: LeituraSegmento[] = [];
+  if (maquina === "MCC4") {
+    // Bender só tem saída; cada segmento tem entrada (1) e saída (2).
+    for (const { key: lado } of LADOS) {
+      leituras.push({ segmento: SEGMENTO_BENDER, lado, posicao: POSICAO_SAIDA });
+    }
+  }
   for (const segmento of segmentosDaMaquina(maquina)) {
     for (const { key: lado } of LADOS) {
-      for (let posicao = 1; posicao <= POSICOES_INICIAIS; posicao++) {
+      for (let posicao = 1; posicao <= posicoesIniciais(maquina); posicao++) {
         leituras.push({ segmento, lado, posicao });
       }
     }
@@ -350,8 +368,9 @@ function PassLineSegmentosForm() {
             {sessaoId ? "Editar" : ""} Pass-Line dos Segmentos
           </h1>
           <p className="text-sm text-[var(--text-dim)]">
-            Tolerância: ±{toleranciaDaMaquina(header.maquina).toFixed(2)}mm — o número de
-            posições varia por segmento e veio
+            {header.maquina === "MCC4"
+              ? `Tolerância do dente (saída de um segmento x entrada do seguinte): ±${TOLERANCIA_DENTE_MCC4.toFixed(2)}mm`
+              : `Tolerância: ±${toleranciaDaMaquina(header.maquina).toFixed(2)}mm — o número de posições varia por segmento e veio`}
           </p>
         </div>
       </div>
@@ -367,6 +386,9 @@ function PassLineSegmentosForm() {
 
       <SessaoHeader value={header} onChange={handleHeaderChange} />
 
+      {header.maquina === "MCC4" ? (
+        <TabelaMcc4 leituras={leituras} onValor={setValor} />
+      ) : (
       <div className="grid gap-3 sm:grid-cols-2">
         {segmentosDaMaquina(header.maquina).map((segmento) => (
           <div key={segmento} className="surface p-4">
@@ -450,6 +472,7 @@ function PassLineSegmentosForm() {
           </div>
         ))}
       </div>
+      )}
 
       <button onClick={salvar} disabled={salvando} className="btn-primary">
         {salvando
@@ -461,6 +484,106 @@ function PassLineSegmentosForm() {
               : "Salvar medição"}
       </button>
     </main>
+  );
+}
+
+/** Igual à planilha da MCC #4: uma linha por emenda, saída x entrada, e o dente. */
+function TabelaMcc4({
+  leituras,
+  onValor,
+}: {
+  leituras: LeituraSegmento[];
+  onValor: (segmento: string, lado: LadoSegmento, posicao: number, texto: string) => void;
+}) {
+  const valor = (segmento: string, lado: LadoSegmento, posicao: number) =>
+    leituras.find((l) => l.segmento === segmento && l.lado === lado && l.posicao === posicao)?.valor;
+  const nome = (seg: string) => (seg === SEGMENTO_BENDER ? "Bender" : `Seg. ${seg}`);
+  const ordem: { key: LadoSegmento; label: string }[] = [
+    { key: "NAO_ACIONADO", label: "Lado não acionado" },
+    { key: "ACIONADO", label: "Lado acionado" },
+  ];
+  return (
+    <div className="surface overflow-x-auto p-0">
+      <p className="p-3 text-xs text-[var(--text-dim)]">
+        Em cada linha: a <b>saída</b> do segmento de cima e a <b>entrada</b> do de baixo. O
+        resultado (dente) é a diferença entre as duas, calculada sozinha.
+      </p>
+      <table className="w-full min-w-[640px] text-xs">
+        <thead>
+          <tr>
+            <th rowSpan={2} className="p-2 text-left font-medium text-[var(--text-dim)]">
+              Emenda
+            </th>
+            {ordem.map(({ key, label }) => (
+              <th
+                key={key}
+                colSpan={3}
+                className="border-l p-2 font-semibold text-[var(--text-dim)]"
+                style={{ borderColor: "var(--border-strong)" }}
+              >
+                {label}
+              </th>
+            ))}
+          </tr>
+          <tr>
+            {ordem.map(({ key }) => (
+              <Fragment key={key}>
+                <th className="border-l p-1.5 font-medium text-[var(--text-faint)]" style={{ borderColor: "var(--border-strong)" }}>
+                  Saída (cima)
+                </th>
+                <th className="p-1.5 font-medium text-[var(--text-faint)]">Entrada (baixo)</th>
+                <th className="p-1.5 font-medium text-[var(--text-faint)]">Dente</th>
+              </Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {JUNCOES_MCC4.map((j) => (
+            <tr key={j.indice} style={{ borderTop: "1px solid var(--border)" }}>
+              <td className="p-2 font-medium whitespace-nowrap">{j.rotulo}</td>
+              {ordem.map(({ key: lado }) => {
+                const saida = valor(j.de, lado, POSICAO_SAIDA);
+                const entrada = valor(j.para, lado, POSICAO_ENTRADA);
+                const dente = calcularDente(saida, entrada);
+                const fora = denteFora(dente);
+                return (
+                  <Fragment key={lado}>
+                    <td className="border-l p-1" style={{ borderColor: "var(--border-strong)" }}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        aria-label={`${nome(j.de)} saída ${lado}`}
+                        placeholder={nome(j.de)}
+                        className="input-cell !w-20 text-center"
+                        value={formatarValorDigitado(saida, 2)}
+                        onChange={(e) => onValor(j.de, lado, POSICAO_SAIDA, e.target.value)}
+                      />
+                    </td>
+                    <td className="p-1">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        aria-label={`${nome(j.para)} entrada ${lado}`}
+                        placeholder={nome(j.para)}
+                        className="input-cell !w-20 text-center"
+                        value={formatarValorDigitado(entrada, 2)}
+                        onChange={(e) => onValor(j.para, lado, POSICAO_ENTRADA, e.target.value)}
+                      />
+                    </td>
+                    <td
+                      className="p-1 text-center font-semibold"
+                      style={{ color: fora ? "#fca5a5" : "var(--text-dim)", background: fora ? "var(--danger-soft)" : undefined }}
+                    >
+                      {dente === undefined ? "—" : dente.toFixed(2).replace(".", ",")}
+                    </td>
+                  </Fragment>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

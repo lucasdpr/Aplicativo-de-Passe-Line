@@ -12,15 +12,23 @@ import type {
   LinhaGap,
   LinhaEmpenoDesgaste,
   LeituraSegmento,
+  LinhaGapMcc4,
   TipoFicha,
 } from "@/types";
-import { TOLERANCIAS as TOLERANCIAS_MM } from "@/types";
+import {
+  GAP_MCC4,
+  TOLERANCIAS as TOLERANCIAS_MM,
+  situacaoGapMcc4,
+  type SituacaoGapMcc4,
+} from "@/types";
+import { TOLERANCIA_DENTE_MCC4, dentesPassLineMcc4, denteFora } from "@/lib/passLineMcc4";
 
 const TITULOS: Record<TipoFicha, string> = {
   PASS_LINE_DESEMPENADEIRA: "MEDIÇÃO E AJUSTE DE PASS-LINE (DESEMPENADEIRA)",
   GAP: "MEDIÇÃO E AJUSTE DE GAP",
   EMPENO_DESGASTE: "MEDIÇÃO DE EMPENO E DESGASTE (DESEMPENADEIRA)",
   PASS_LINE_SEGMENTOS: "MEDIÇÃO E AJUSTE DE PASS-LINE DOS SEGMENTOS",
+  GAP_MCC4: "MEDIÇÃO E AJUSTE DE GAP",
 };
 
 /**
@@ -42,6 +50,8 @@ function toleranciaSegmentos(sessao: SessaoMedicao) {
 
 function textoTolerancia(sessao: SessaoMedicao) {
   if (sessao.tipoFicha === "PASS_LINE_SEGMENTOS") {
+    // Na MCC4 a tolerância é do dente e sai na linha da própria tabela.
+    if (sessao.maquina === "MCC4") return "";
     return `TOLERÂNCIA: +/- ${fmt(toleranciaSegmentos(sessao))}mm`;
   }
   return TOLERANCIAS[sessao.tipoFicha];
@@ -52,6 +62,7 @@ const TOLERANCIAS: Record<TipoFicha, string> = {
   GAP: "",
   EMPENO_DESGASTE: "EMPENO/MAXIMO 2mm",
   PASS_LINE_SEGMENTOS: "",
+  GAP_MCC4: "",
 };
 
 type LinhasPorTipo = {
@@ -59,6 +70,7 @@ type LinhasPorTipo = {
   GAP: LinhaGap[];
   EMPENO_DESGASTE: LinhaEmpenoDesgaste[];
   PASS_LINE_SEGMENTOS: LeituraSegmento[];
+  GAP_MCC4: LinhaGapMcc4[];
 };
 
 const PAGE_W = 595.28; // A4 retrato (em pé) — do jeito que é impresso
@@ -837,6 +849,250 @@ function pdfGapAtualizado(ctx: Ctx, dados: LinhaGap[]) {
   );
 }
 
+// --- GAP da MCC4: igual à "Planilha de medição e ajuste GAP da MCC #4" ---
+
+const CELULAS_GAP_MCC4 = [
+  { ponto: "ENTRADA", lado: "ACIONADO" },
+  { ponto: "ENTRADA", lado: "NAO_ACIONADO" },
+  { ponto: "SAIDA", lado: "ACIONADO" },
+  { ponto: "SAIDA", lado: "NAO_ACIONADO" },
+] as const;
+
+function gradeGapMcc4(dados: LinhaGapMcc4[]) {
+  const porChave = new Map(dados.map((l) => [`${l.segmento}|${l.ponto}|${l.lado}`, l]));
+  return Array.from({ length: GAP_MCC4.segmentos }, (_, i) => {
+    const segmento = i + 1;
+    return {
+      segmento,
+      celulas: CELULAS_GAP_MCC4.map((c) => porChave.get(`${segmento}|${c.ponto}|${c.lado}`)),
+    };
+  });
+}
+
+const ESTILO_FORA = { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true };
+const ESTILO_OK = { cor: COR_OK, fundo: COR_OK_FUNDO };
+const ESTILO_AJUSTADO = { cor: COR_PRIMEIRA, fundo: COR_PRIMEIRA_FUNDO, negrito: true };
+const ESTILO_ABERTO = { cor: COR_TEXTO_SUAVE, fundo: COR_ZEBRA };
+
+function estiloSituacaoGapMcc4(sit: SituacaoGapMcc4 | undefined) {
+  switch (sit) {
+    case "OK":
+      return ESTILO_OK;
+    case "FORA":
+      return ESTILO_FORA;
+    case "AJUSTADO":
+      return ESTILO_AJUSTADO;
+    case "ABERTO":
+      return ESTILO_ABERTO;
+    default:
+      return undefined;
+  }
+}
+
+const TEXTO_TOLERANCIA_GAP_MCC4 = `GAP NOMINAL ${fmt(GAP_MCC4.nominal)} mm - TOLERÂNCIA: +/- ${fmt(GAP_MCC4.tolerancia)} mm`;
+const LEGENDA_AJUSTADO = { cor: COR_PRIMEIRA, fundo: COR_PRIMEIRA_FUNDO, texto: "Fora, calço colocado" };
+const GRUPOS_GAP_MCC4 = (porPonto: number) => [
+  { titulo: "", colunas: 1 },
+  { titulo: "ENTRADA", colunas: porPonto },
+  { titulo: "SAÍDA", colunas: porPonto },
+];
+
+function pdfGapMcc4Completo(ctx: Ctx, dados: LinhaGapMcc4[]) {
+  linhaInfo(ctx, TEXTO_TOLERANCIA_GAP_MCC4, [
+    { cor: COR_OK, fundo: COR_OK_FUNDO, texto: "Dentro" },
+    LEGENDA_FORA,
+    LEGENDA_AJUSTADO,
+  ]);
+  const grade = gradeGapMcc4(dados);
+  // Por célula: [medição, calço]
+  const textos = (l: LinhaGapMcc4 | undefined): [string, string] => {
+    if (!l) return ["", ""];
+    if (l.aberto) return ["ABERTO", ""];
+    return [fmt(l.medicao), fmt(l.ajuste)];
+  };
+  desenharTabela(
+    ctx,
+    [
+      { header: "SEGMENTO", width: 56, alinhar: "centro" },
+      ...[0, 1].flatMap(() => [
+        { header: "MED. ACION.", width: 56, alinhar: "centro" as const },
+        { header: "AJUSTE (CALÇO)", width: 52, alinhar: "centro" as const },
+        { header: "MED. N. ACION.", width: 60, alinhar: "centro" as const },
+        { header: "AJUSTE (CALÇO)", width: 52, alinhar: "centro" as const },
+      ]),
+    ],
+    grade.map(({ segmento, celulas }) => [
+      `Segmento ${segmento}`,
+      ...celulas.flatMap((l) => textos(l)),
+    ]),
+    {
+      larguraTotal: true,
+      caberNumaPagina: true,
+      grupos: GRUPOS_GAP_MCC4(4),
+      estiloCelula: (linha, coluna) => {
+        if (coluna === 0) return undefined;
+        const l = grade[linha].celulas[Math.floor((coluna - 1) / 2)];
+        if (!l) return undefined;
+        const ehAjuste = (coluna - 1) % 2 === 1;
+        if (ehAjuste) return undefined;
+        return estiloSituacaoGapMcc4(situacaoGapMcc4(l));
+      },
+    }
+  );
+}
+
+function pdfGapMcc4Final(ctx: Ctx, dados: LinhaGapMcc4[]) {
+  linhaInfo(ctx, TEXTO_TOLERANCIA_GAP_MCC4, [LEGENDA_FORA, LEGENDA_AJUSTADO]);
+  const grade = gradeGapMcc4(dados).map(({ segmento, celulas }) => {
+    const sits = celulas.map((l) => (l ? situacaoGapMcc4(l) : undefined));
+    const presentes = sits.filter((x) => x !== undefined);
+    const situacao =
+      presentes.length === 0
+        ? ""
+        : presentes.includes("FORA")
+          ? "FORA"
+          : presentes.includes("AJUSTADO")
+            ? "AJUSTADO"
+            : presentes.every((x) => x === "ABERTO")
+              ? "ABERTO"
+              : "OK";
+    return { segmento, celulas, sits, situacao };
+  });
+  const texto = (l: LinhaGapMcc4 | undefined) => {
+    if (!l) return "";
+    if (l.aberto) return "ABERTO";
+    const sit = situacaoGapMcc4(l);
+    if (sit === "AJUSTADO") return `${fmt(l.medicao)} (+${fmt(l.ajuste)})`;
+    return fmt(l.medicao);
+  };
+  desenharTabela(
+    ctx,
+    [
+      { header: "SEGMENTO", width: 70, alinhar: "centro" },
+      { header: "ACIONADO", width: 85, alinhar: "centro" },
+      { header: "NÃO ACIONADO", width: 85, alinhar: "centro" },
+      { header: "ACIONADO", width: 85, alinhar: "centro" },
+      { header: "NÃO ACIONADO", width: 85, alinhar: "centro" },
+      { header: "SITUAÇÃO", width: 70, alinhar: "centro" },
+    ],
+    grade.map(({ segmento, celulas, situacao }) => [
+      `Segmento ${segmento}`,
+      ...celulas.map(texto),
+      situacao,
+    ]),
+    {
+      larguraTotal: true,
+      caberNumaPagina: true,
+      grupos: [...GRUPOS_GAP_MCC4(2), { titulo: "", colunas: 1 }],
+      estiloCelula: (linha, coluna) => {
+        const g = grade[linha];
+        if (coluna >= 1 && coluna <= 4) {
+          const sit = g.sits[coluna - 1];
+          return sit === "OK" ? undefined : estiloSituacaoGapMcc4(sit);
+        }
+        if (coluna === 5 && g.situacao) {
+          const est = estiloSituacaoGapMcc4(g.situacao as SituacaoGapMcc4);
+          return est ? { ...est, negrito: true } : undefined;
+        }
+        return undefined;
+      },
+    }
+  );
+}
+
+// --- Pass-Line dos Segmentos da MCC4: igual à planilha (emendas e dente) ---
+
+function pdfPassLineMcc4(ctx: Ctx, leituras: LeituraSegmento[], soDentes: boolean) {
+  const linhas = dentesPassLineMcc4(leituras);
+  linhaInfo(
+    ctx,
+    `TOLERÂNCIA DO DENTE: +/- ${fmt(TOLERANCIA_DENTE_MCC4)} mm (SAÍDA DO SEGMENTO DE CIMA x ENTRADA DO DE BAIXO)`,
+    [LEGENDA_FORA]
+  );
+  const lados = ["NAO_ACIONADO", "ACIONADO"] as const;
+  const situacao = (i: number) => {
+    const ds = lados.map((ld) => linhas[i].lados[ld].dente).filter((d) => d !== undefined);
+    if (ds.length === 0) return "";
+    return ds.some((d) => denteFora(d)) ? "FORA" : "OK";
+  };
+  const estiloDente = (i: number, ld: (typeof lados)[number]) =>
+    linhas[i].lados[ld].fora ? { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true } : undefined;
+  const estiloSituacao = (i: number) => {
+    const sit = situacao(i);
+    if (!sit) return undefined;
+    return sit === "OK"
+      ? { cor: COR_OK, fundo: COR_OK_FUNDO, negrito: true }
+      : { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true };
+  };
+
+  if (soDentes) {
+    desenharTabela(
+      ctx,
+      [
+        { header: "EMENDA", width: 160 },
+        { header: "NÃO ACIONADO", width: 100, alinhar: "centro" },
+        { header: "ACIONADO", width: 100, alinhar: "centro" },
+        { header: "SITUAÇÃO", width: 80, alinhar: "centro" },
+      ],
+      linhas.map(({ juncao, lados: l }, i) => [
+        juncao.rotulo,
+        fmt(l.NAO_ACIONADO.dente),
+        fmt(l.ACIONADO.dente),
+        situacao(i),
+      ]),
+      {
+        larguraTotal: true,
+        caberNumaPagina: true,
+        grupos: [
+          { titulo: "", colunas: 1 },
+          { titulo: "RESULTADO (DENTE)", colunas: 2 },
+          { titulo: "", colunas: 1 },
+        ],
+        estiloCelula: (linha, coluna) =>
+          coluna === 1
+            ? estiloDente(linha, "NAO_ACIONADO")
+            : coluna === 2
+              ? estiloDente(linha, "ACIONADO")
+              : coluna === 3
+                ? estiloSituacao(linha)
+                : undefined,
+      }
+    );
+    return;
+  }
+
+  desenharTabela(
+    ctx,
+    [
+      { header: "EMENDA", width: 120 },
+      ...lados.flatMap(() => [
+        { header: "SAÍDA (CIMA)", width: 62, alinhar: "centro" as const },
+        { header: "ENTRADA (BAIXO)", width: 68, alinhar: "centro" as const },
+        { header: "DENTE", width: 50, alinhar: "centro" as const },
+      ]),
+    ],
+    linhas.map(({ juncao, lados: l }) => [
+      juncao.rotulo,
+      ...lados.flatMap((ld) => [fmt(l[ld].saida), fmt(l[ld].entrada), fmt(l[ld].dente)]),
+    ]),
+    {
+      larguraTotal: true,
+      caberNumaPagina: true,
+      grupos: [
+        { titulo: "", colunas: 1 },
+        { titulo: "LADO NÃO ACIONADO", colunas: 3 },
+        { titulo: "LADO ACIONADO", colunas: 3 },
+      ],
+      estiloCelula: (linha, coluna) =>
+        coluna === 3
+          ? estiloDente(linha, "NAO_ACIONADO")
+          : coluna === 6
+            ? estiloDente(linha, "ACIONADO")
+            : undefined,
+    }
+  );
+}
+
 export type ModoPdfGap = "TUDO" | "ATUALIZADO";
 
 export async function gerarPdfSessao(
@@ -850,10 +1106,16 @@ export async function gerarPdfSessao(
   const page = novaPagina(doc);
   const ctx: Ctx = { doc, font, bold, page, y: PAGE_H - MARGIN };
 
-  const versaoGap =
-    sessao.tipoFicha === "GAP"
+  const ehPassLineMcc4 = sessao.tipoFicha === "PASS_LINE_SEGMENTOS" && sessao.maquina === "MCC4";
+  const versaoGap = ehPassLineMcc4
+    ? modoGap === "ATUALIZADO"
+      ? "SÓ RESULTADOS"
+      : "VERSÃO COMPLETA"
+    : sessao.tipoFicha === "GAP" || sessao.tipoFicha === "GAP_MCC4"
       ? modoGap === "ATUALIZADO"
-        ? "VERSÃO ATUALIZADA"
+        ? sessao.tipoFicha === "GAP_MCC4"
+          ? "MEDIDA FINAL"
+          : "VERSÃO ATUALIZADA"
         : "VERSÃO COMPLETA"
       : undefined;
   cabecalho(ctx, sessao, versaoGap);
@@ -900,6 +1162,19 @@ export async function gerarPdfSessao(
       else pdfGapCompleto(ctx, dados);
       break;
     }
+    case "GAP_MCC4": {
+      const dados = (linhas as LinhaGapMcc4[]).map((l) => ({
+        ...l,
+        // O banco devolve numeric como texto em alguns casos.
+        segmento: Number(l.segmento),
+        aberto: !!l.aberto,
+        medicao: l.medicao === null || l.medicao === undefined ? undefined : Number(l.medicao),
+        ajuste: l.ajuste === null || l.ajuste === undefined ? undefined : Number(l.ajuste),
+      }));
+      if (modoGap === "ATUALIZADO") pdfGapMcc4Final(ctx, dados);
+      else pdfGapMcc4Completo(ctx, dados);
+      break;
+    }
     case "EMPENO_DESGASTE": {
       const dados = linhas as LinhaEmpenoDesgaste[];
       desenharTabela(
@@ -926,6 +1201,10 @@ export async function gerarPdfSessao(
       break;
     }
     case "PASS_LINE_SEGMENTOS": {
+      if (ehPassLineMcc4) {
+        pdfPassLineMcc4(ctx, linhas as LeituraSegmento[], modoGap === "ATUALIZADO");
+        break;
+      }
       // Ordem: segmento em ordem numérica (1, 2, … 17 — antes era por
       // texto: 1, 10, 11, …, 2), depois lado acionado, depois posição.
       const ordemSegmento = (seg: string) => {

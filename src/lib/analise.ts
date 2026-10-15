@@ -1,8 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buscarTodas } from "@/lib/buscarTodas";
 import { hojeIso } from "@/lib/datas";
-import { TOLERANCIAS, type Maquina, type TipoFicha, type Veio } from "@/types";
+import {
+  GAP_MCC4,
+  TOLERANCIAS,
+  type Maquina,
+  type TipoFicha,
+  type Veio,
+} from "@/types";
 import { comboLabel, intervaloDias, type Combo } from "@/lib/prazos";
+import { dentesPassLineMcc4 } from "@/lib/passLineMcc4";
 
 const VEIOS_POR_MAQUINA: Record<Maquina, Veio[]> = {
   MCC2: ["C", "D"],
@@ -20,7 +27,7 @@ const FICHAS_COM_ANALISE: TipoFicha[] = [
 const FICHAS_COM_ANALISE_POR_MAQUINA: Record<Maquina, TipoFicha[]> = {
   MCC2: FICHAS_COM_ANALISE,
   MCC3: FICHAS_COM_ANALISE,
-  MCC4: ["PASS_LINE_SEGMENTOS"],
+  MCC4: ["PASS_LINE_SEGMENTOS", "GAP_MCC4"],
 };
 
 function toleranciaSegmentos(maquina: Maquina): number {
@@ -209,6 +216,7 @@ export async function buscarAnaliseCombos(
     { data: gap },
     { data: empeno },
     { data: segmentos },
+    { data: gapMcc4 },
   ] =
     await Promise.all([
       // Tudo em páginas de 1000 (limite da API) — linhas_gap já passou disso.
@@ -246,7 +254,14 @@ export async function buscarAnaliseCombos(
       buscarTodas<Record<string, unknown>>((de, ate) =>
         supabase
           .from("leituras_segmentos")
-          .select("sessao_id, segmento, valor")
+          .select("sessao_id, segmento, lado, posicao, valor")
+          .order("id")
+          .range(de, ate)
+      ),
+      buscarTodas<Record<string, unknown>>((de, ate) =>
+        supabase
+          .from("linhas_gap_mcc4")
+          .select("sessao_id, segmento, medicao, ajuste, aberto")
           .order("id")
           .range(de, ate)
       ),
@@ -347,9 +362,48 @@ export async function buscarAnaliseCombos(
 
   // Pass-Line dos Segmentos: cada leitura já é o desvio (mm) do rolo em
   // relação à régua. O "Nº CAD" aqui é o número do segmento.
+  // MCC4: o que tem tolerância é o dente de cada emenda (saída x entrada).
+  const leiturasMcc4PorSessao = new Map<string, Record<string, unknown>[]>();
+  for (const linha of segmentos ?? []) {
+    const sessao = sessaoPorId.get(linha.sessao_id as string);
+    if (sessao?.maquina !== "MCC4") continue;
+    const lista = leiturasMcc4PorSessao.get(sessao.id) ?? [];
+    lista.push(linha);
+    leiturasMcc4PorSessao.set(sessao.id, lista);
+  }
+  for (const [sessaoId, lista] of leiturasMcc4PorSessao) {
+    const sessao = sessaoPorId.get(sessaoId)!;
+    const comboAgregado = comboDaSessao(sessao);
+    const tolerancia = toleranciaSegmentos("MCC4");
+    let soma = 0;
+    let total = 0;
+    let fora = 0;
+    for (const { juncao, lados } of dentesPassLineMcc4(
+      lista.map((l) => ({
+        segmento: String(l.segmento),
+        lado: l.lado as "ACIONADO" | "NAO_ACIONADO",
+        posicao: Number(l.posicao),
+        valor: l.valor as number | undefined,
+      }))
+    )) {
+      for (const d of Object.values(lados)) {
+        if (d.dente === undefined) continue;
+        atualizarPior(comboAgregado, { nCad: juncao.indice, valor: d.dente, data: sessao.data }, false);
+        atualizarNCad(comboAgregado, juncao.indice, d.dente, sessao.data, false);
+        comboAgregado.somaTolerancia += tolerancia;
+        comboAgregado.contagemTolerancia += 1;
+        soma += d.dente;
+        total += 1;
+        if (d.fora) fora += 1;
+      }
+    }
+    if (total > 0) agregadoPorSessao.set(sessaoId, { valor: soma / total, fora, total });
+  }
+
   for (const linha of segmentos ?? []) {
     const sessaoId = linha.sessao_id as string;
     const sessao = sessaoPorId.get(sessaoId);
+    if (sessao?.maquina === "MCC4") continue;
     if (!sessao || linha.valor === null || linha.valor === undefined) continue;
     const segmento = Number(linha.segmento);
     if (!Number.isFinite(segmento)) continue;
@@ -365,6 +419,30 @@ export async function buscarAnaliseCombos(
     agregadoPorSessao.set(sessaoId, {
       valor: (somaAnterior + valor) / (atual.total + 1),
       fora: atual.fora + (valor > tolerancia + 1e-9 ? 1 : 0),
+      total: atual.total + 1,
+    });
+  }
+
+  // GAP da MCC4: desvio da medição (como encontrado, antes do calço) em
+  // relação ao nominal de 255,00. Ponto "aberto" não tem medida e fica fora.
+  for (const linha of gapMcc4 ?? []) {
+    const sessaoId = linha.sessao_id as string;
+    const sessao = sessaoPorId.get(sessaoId);
+    if (!sessao || linha.aberto) continue;
+    const bruto = linha.medicao;
+    if (bruto === null || bruto === undefined) continue;
+    const segmento = Number(linha.segmento);
+    const valor = Math.abs(Number(bruto) - GAP_MCC4.nominal);
+    const comboAgregado = comboDaSessao(sessao);
+    atualizarPior(comboAgregado, { nCad: segmento, valor, data: sessao.data }, false);
+    atualizarNCad(comboAgregado, segmento, valor, sessao.data, false);
+    comboAgregado.somaTolerancia += GAP_MCC4.tolerancia;
+    comboAgregado.contagemTolerancia += 1;
+    const atual = agregadoPorSessao.get(sessaoId) ?? { valor: null, fora: 0, total: 0 };
+    const somaAnterior = (atual.valor ?? 0) * atual.total;
+    agregadoPorSessao.set(sessaoId, {
+      valor: (somaAnterior + valor) / (atual.total + 1),
+      fora: atual.fora + (valor > GAP_MCC4.tolerancia + 1e-9 ? 1 : 0),
       total: atual.total + 1,
     });
   }
@@ -570,7 +648,9 @@ function descricaoDoValor(tipoFicha: TipoFicha): string {
     case "EMPENO_DESGASTE":
       return "Diâmetro médio do rolo";
     case "PASS_LINE_SEGMENTOS":
-      return "Desvio médio dos segmentos";
+      return "Desvio médio (MCC4: dente médio entre segmentos)";
+    case "GAP_MCC4":
+      return "Desvio médio medido do GAP nominal (255,00), antes do calço";
     default:
       return "Valor médio";
   }
