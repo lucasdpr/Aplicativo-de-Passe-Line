@@ -712,6 +712,68 @@ function textoToleranciaGap(dados: LinhaGap[]) {
 
 const LEGENDA_FORA = { cor: COR_FORA, fundo: COR_FORA_FUNDO, texto: "Fora da tolerância" };
 
+/** Texto que quebra em linhas pra caber na largura da página (com nova página se precisar). */
+function paragrafo(ctx: Ctx, texto: string, cor: RGB, negrito = false) {
+  const fonte = negrito ? ctx.bold : ctx.font;
+  const largura = PAGE_W - MARGIN * 2;
+  const palavras = sanitizarTexto(texto).split(" ");
+  let linha = "";
+  const linhas: string[] = [];
+  for (const p of palavras) {
+    const tentativa = linha ? `${linha} ${p}` : p;
+    if (fonte.widthOfTextAtSize(tentativa, 8) > largura && linha) {
+      linhas.push(linha);
+      linha = p;
+    } else linha = tentativa;
+  }
+  if (linha) linhas.push(linha);
+  for (const l of linhas) {
+    if (ctx.y - 11 < LIMITE_INFERIOR) {
+      ctx.page = novaPagina(ctx.doc);
+      ctx.y = PAGE_H - MARGIN;
+    }
+    ctx.page.drawText(l, { x: MARGIN, y: ctx.y - 8, size: 8, font: fonte, color: cor });
+    ctx.y -= 11;
+  }
+}
+
+/**
+ * Resumo das cadeiras fora da tolerância (é normal ficar cadeira fora sem
+ * 2ª medição — o PDF só precisa deixar isso apontado).
+ */
+function resumoForaGap(ctx: Ctx, dados: LinhaGap[]) {
+  const primeiras: (keyof LinhaGap)[] = ["primeiraAcionado", "primeiraCentro", "primeiraNaoAcionado"];
+  const segundas: (keyof LinhaGap)[] = ["segundaAcionado", "segundaCentro", "segundaNaoAcionado"];
+  const tem = (v: unknown) => v !== null && v !== undefined;
+  const foraNa = (l: LinhaGap, campos: (keyof LinhaGap)[]) =>
+    campos.some((c) => foraGap(l[c] as number | undefined, l));
+
+  const foraPrimeira = dados.filter((l) => foraNa(l, primeiras));
+  const semSegunda = foraPrimeira.filter((l) => !segundas.some((c) => tem(l[c])));
+  const continuaFora = dados.filter((l) => segundas.some((c) => tem(l[c])) && foraNa(l, segundas));
+  const corrigidas = foraPrimeira.filter(
+    (l) => segundas.some((c) => tem(l[c])) && !foraNa(l, segundas)
+  );
+  const lista = (ls: LinhaGap[]) => (ls.length ? ls.map((l) => l.nCad).join(", ") : "nenhuma");
+
+  ctx.y -= 4;
+  paragrafo(ctx, "RESUMO DAS CADEIRAS FORA DA TOLERÂNCIA", COR_PRIMARIA, true);
+  paragrafo(ctx, `Fora na 1ª medição (${foraPrimeira.length}): ${lista(foraPrimeira)}`, COR_TEXTO);
+  paragrafo(ctx, `Ajustadas e dentro na 2ª medição (${corrigidas.length}): ${lista(corrigidas)}`, COR_OK);
+  paragrafo(
+    ctx,
+    `Fora e SEM 2ª medição (${semSegunda.length}): ${lista(semSegunda)}`,
+    semSegunda.length ? COR_FORA : COR_TEXTO,
+    semSegunda.length > 0
+  );
+  paragrafo(
+    ctx,
+    `Continuam fora após a 2ª medição (${continuaFora.length}): ${lista(continuaFora)}`,
+    continuaFora.length ? COR_FORA : COR_TEXTO,
+    continuaFora.length > 0
+  );
+}
+
 function pdfGapCompleto(ctx: Ctx, dados: LinhaGap[]) {
   linhaInfo(ctx, textoToleranciaGap(dados), [LEGENDA_FORA]);
 
@@ -798,7 +860,8 @@ function pdfGapAtualizado(ctx: Ctx, dados: LinhaGap[]) {
     const origem = mista ? "1ª / 2ª" : origens.has(2) ? "2ª" : origens.has(1) ? "1ª" : "";
     const preenchidos = valores.filter((v) => v.valor !== undefined);
     const fora = preenchidos.some((v) => foraGap(v.valor, l));
-    const situacao = preenchidos.length === 0 ? "" : fora ? "FORA" : "OK";
+    const situacao =
+      preenchidos.length === 0 ? "" : fora ? (origens.has(2) ? "FORA" : "FORA S/ 2ª") : "OK";
     return { l, valores, mista, origem, situacao };
   });
 
@@ -1160,6 +1223,7 @@ export async function gerarPdfSessao(
       const dados = [...(linhas as LinhaGap[])].sort((a, b) => a.nCad - b.nCad);
       if (modoGap === "ATUALIZADO") pdfGapAtualizado(ctx, dados);
       else pdfGapCompleto(ctx, dados);
+      resumoForaGap(ctx, dados);
       break;
     }
     case "GAP_MCC4": {
