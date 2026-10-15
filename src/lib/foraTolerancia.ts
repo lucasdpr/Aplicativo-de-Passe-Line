@@ -1,3 +1,4 @@
+import { dentesPassLineMcc4 } from "@/lib/passLineMcc4";
 import {
   TOLERANCIAS,
   foraGapMcc4,
@@ -52,7 +53,19 @@ export function contarForaPorSessao(
     }
   }
 
+  const mcc4 = new Map<string, (LeituraSegmento & { sessaoId: string })[]>();
   for (const l of leituras) {
+    if (maquinaPorSessao.get(l.sessaoId) !== "MCC4") continue;
+    mcc4.set(l.sessaoId, [...(mcc4.get(l.sessaoId) ?? []), l]);
+  }
+  for (const [sessaoId, lista] of mcc4) {
+    for (const { lados } of dentesPassLineMcc4(lista)) {
+      for (const d of Object.values(lados)) if (d.fora) somar(sessaoId);
+    }
+  }
+
+  for (const l of leituras) {
+    if (maquinaPorSessao.get(l.sessaoId) === "MCC4") continue;
     if (l.valor === undefined || l.valor === null) continue;
     const tol =
       maquinaPorSessao.get(l.sessaoId) === "MCC4"

@@ -21,6 +21,7 @@ import {
   foraGapMcc4,
   medidaFinalGapMcc4,
 } from "@/types";
+import { TOLERANCIA_DENTE_MCC4, dentesPassLineMcc4, denteFora } from "@/lib/passLineMcc4";
 
 const TITULOS: Record<TipoFicha, string> = {
   PASS_LINE_DESEMPENADEIRA: "MEDIÇÃO E AJUSTE DE PASS-LINE (DESEMPENADEIRA)",
@@ -49,6 +50,8 @@ function toleranciaSegmentos(sessao: SessaoMedicao) {
 
 function textoTolerancia(sessao: SessaoMedicao) {
   if (sessao.tipoFicha === "PASS_LINE_SEGMENTOS") {
+    // Na MCC4 a tolerância é do dente e sai na linha da própria tabela.
+    if (sessao.maquina === "MCC4") return "";
     return `TOLERÂNCIA: +/- ${fmt(toleranciaSegmentos(sessao))}mm`;
   }
   return TOLERANCIAS[sessao.tipoFicha];
@@ -980,6 +983,99 @@ function pdfGapMcc4Final(ctx: Ctx, dados: LinhaGapMcc4[]) {
   );
 }
 
+// --- Pass-Line dos Segmentos da MCC4: igual à planilha (emendas e dente) ---
+
+function pdfPassLineMcc4(ctx: Ctx, leituras: LeituraSegmento[], soDentes: boolean) {
+  const linhas = dentesPassLineMcc4(leituras);
+  linhaInfo(
+    ctx,
+    `TOLERÂNCIA DO DENTE: +/- ${fmt(TOLERANCIA_DENTE_MCC4)} mm (SAÍDA DO SEGMENTO DE CIMA x ENTRADA DO DE BAIXO)`,
+    [LEGENDA_FORA]
+  );
+  const lados = ["NAO_ACIONADO", "ACIONADO"] as const;
+  const situacao = (i: number) => {
+    const ds = lados.map((ld) => linhas[i].lados[ld].dente).filter((d) => d !== undefined);
+    if (ds.length === 0) return "";
+    return ds.some((d) => denteFora(d)) ? "FORA" : "OK";
+  };
+  const estiloDente = (i: number, ld: (typeof lados)[number]) =>
+    linhas[i].lados[ld].fora ? { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true } : undefined;
+  const estiloSituacao = (i: number) => {
+    const sit = situacao(i);
+    if (!sit) return undefined;
+    return sit === "OK"
+      ? { cor: COR_OK, fundo: COR_OK_FUNDO, negrito: true }
+      : { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true };
+  };
+
+  if (soDentes) {
+    desenharTabela(
+      ctx,
+      [
+        { header: "EMENDA", width: 160 },
+        { header: "NÃO ACIONADO", width: 100, alinhar: "centro" },
+        { header: "ACIONADO", width: 100, alinhar: "centro" },
+        { header: "SITUAÇÃO", width: 80, alinhar: "centro" },
+      ],
+      linhas.map(({ juncao, lados: l }, i) => [
+        juncao.rotulo,
+        fmt(l.NAO_ACIONADO.dente),
+        fmt(l.ACIONADO.dente),
+        situacao(i),
+      ]),
+      {
+        larguraTotal: true,
+        caberNumaPagina: true,
+        grupos: [
+          { titulo: "", colunas: 1 },
+          { titulo: "RESULTADO (DENTE)", colunas: 2 },
+          { titulo: "", colunas: 1 },
+        ],
+        estiloCelula: (linha, coluna) =>
+          coluna === 1
+            ? estiloDente(linha, "NAO_ACIONADO")
+            : coluna === 2
+              ? estiloDente(linha, "ACIONADO")
+              : coluna === 3
+                ? estiloSituacao(linha)
+                : undefined,
+      }
+    );
+    return;
+  }
+
+  desenharTabela(
+    ctx,
+    [
+      { header: "EMENDA", width: 120 },
+      ...lados.flatMap(() => [
+        { header: "SAÍDA (CIMA)", width: 62, alinhar: "centro" as const },
+        { header: "ENTRADA (BAIXO)", width: 68, alinhar: "centro" as const },
+        { header: "DENTE", width: 50, alinhar: "centro" as const },
+      ]),
+    ],
+    linhas.map(({ juncao, lados: l }) => [
+      juncao.rotulo,
+      ...lados.flatMap((ld) => [fmt(l[ld].saida), fmt(l[ld].entrada), fmt(l[ld].dente)]),
+    ]),
+    {
+      larguraTotal: true,
+      caberNumaPagina: true,
+      grupos: [
+        { titulo: "", colunas: 1 },
+        { titulo: "LADO NÃO ACIONADO", colunas: 3 },
+        { titulo: "LADO ACIONADO", colunas: 3 },
+      ],
+      estiloCelula: (linha, coluna) =>
+        coluna === 3
+          ? estiloDente(linha, "NAO_ACIONADO")
+          : coluna === 6
+            ? estiloDente(linha, "ACIONADO")
+            : undefined,
+    }
+  );
+}
+
 export type ModoPdfGap = "TUDO" | "ATUALIZADO";
 
 export async function gerarPdfSessao(
@@ -993,8 +1089,12 @@ export async function gerarPdfSessao(
   const page = novaPagina(doc);
   const ctx: Ctx = { doc, font, bold, page, y: PAGE_H - MARGIN };
 
-  const versaoGap =
-    sessao.tipoFicha === "GAP" || sessao.tipoFicha === "GAP_MCC4"
+  const ehPassLineMcc4 = sessao.tipoFicha === "PASS_LINE_SEGMENTOS" && sessao.maquina === "MCC4";
+  const versaoGap = ehPassLineMcc4
+    ? modoGap === "ATUALIZADO"
+      ? "SÓ RESULTADOS"
+      : "VERSÃO COMPLETA"
+    : sessao.tipoFicha === "GAP" || sessao.tipoFicha === "GAP_MCC4"
       ? modoGap === "ATUALIZADO"
         ? sessao.tipoFicha === "GAP_MCC4"
           ? "MEDIDA FINAL"
@@ -1083,6 +1183,10 @@ export async function gerarPdfSessao(
       break;
     }
     case "PASS_LINE_SEGMENTOS": {
+      if (ehPassLineMcc4) {
+        pdfPassLineMcc4(ctx, linhas as LeituraSegmento[], modoGap === "ATUALIZADO");
+        break;
+      }
       // Ordem: segmento em ordem numérica (1, 2, … 17 — antes era por
       // texto: 1, 10, 11, …, 2), depois lado acionado, depois posição.
       const ordemSegmento = (seg: string) => {

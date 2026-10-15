@@ -89,7 +89,9 @@ export async function GET(req: NextRequest) {
         ? "-atualizado"
         : sessao.tipoFicha === "GAP_MCC4"
           ? "-medida-final"
-          : "";
+          : sessao.tipoFicha === "PASS_LINE_SEGMENTOS"
+            ? "-dentes"
+            : "";
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {
       "Content-Type": "application/pdf",
