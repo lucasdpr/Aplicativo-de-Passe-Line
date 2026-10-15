@@ -56,7 +56,7 @@ function corDaVariacao(combo: AnaliseCombo): string {
 }
 
 function rotuloPosicao(tipoFicha: AnaliseCombo["tipoFicha"]) {
-  return tipoFicha === "PASS_LINE_SEGMENTOS" ? "Segmento" : "Nº CAD";
+  return tipoFicha === "PASS_LINE_SEGMENTOS" || tipoFicha === "GAP_MCC4" ? "Segmento" : "Nº CAD";
 }
 
 const SIGLA_FICHA: Record<AnaliseCombo["tipoFicha"], string> = {
@@ -64,6 +64,7 @@ const SIGLA_FICHA: Record<AnaliseCombo["tipoFicha"], string> = {
   GAP: "GAP",
   EMPENO_DESGASTE: "E/D",
   PASS_LINE_SEGMENTOS: "PL-S",
+  GAP_MCC4: "GAP",
 };
 
 function textoTendencia(combo: AnaliseCombo): string {

@@ -1,7 +1,10 @@
 import {
   TOLERANCIAS,
+  foraGapMcc4,
+  medidaFinalGapMcc4,
   type LeituraSegmento,
   type LinhaGap,
+  type LinhaGapMcc4,
   type LinhaPassLineDesempenadeira,
   type Maquina,
   type SessaoMedicao,
@@ -18,7 +21,8 @@ export function contarForaPorSessao(
   sessoes: SessaoMedicao[],
   linhasGap: (LinhaGap & { sessaoId: string })[],
   leituras: (LeituraSegmento & { sessaoId: string })[],
-  linhasDesempenadeira: (LinhaPassLineDesempenadeira & { sessaoId: string })[] = []
+  linhasDesempenadeira: (LinhaPassLineDesempenadeira & { sessaoId: string })[] = [],
+  linhasGapMcc4: (LinhaGapMcc4 & { sessaoId: string })[] = []
 ): Map<string, number> {
   const maquinaPorSessao = new Map<string, Maquina>(sessoes.map((s) => [s.id, s.maquina]));
   const fora = new Map<string, number>();
@@ -35,6 +39,10 @@ export function contarForaPorSessao(
       if (valor === undefined || valor === null) continue;
       if (Math.abs(valor - l.gapNominal) > l.toleranciaMm + EPS) somar(l.sessaoId);
     }
+  }
+
+  for (const l of linhasGapMcc4) {
+    if (l.aberto || foraGapMcc4(medidaFinalGapMcc4(l))) somar(l.sessaoId);
   }
 
   for (const l of linhasDesempenadeira) {

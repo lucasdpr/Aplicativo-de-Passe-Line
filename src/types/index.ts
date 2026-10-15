@@ -8,7 +8,8 @@ export type TipoFicha =
   | "PASS_LINE_DESEMPENADEIRA"
   | "GAP"
   | "EMPENO_DESGASTE"
-  | "PASS_LINE_SEGMENTOS";
+  | "PASS_LINE_SEGMENTOS"
+  | "GAP_MCC4";
 
 export type PapelTecnico = "TECNICO" | "VISUALIZADOR" | "ADMIN";
 
@@ -109,6 +110,36 @@ export interface LeituraSegmento {
   lado: LadoSegmento;
   posicao: number; // position index within the segment diagram
   valor?: number;
+}
+
+// --- Form 5: GAP da MCC4 (ficha própria, por segmento) ---
+export type PontoGapMcc4 = "ENTRADA" | "SAIDA";
+
+/**
+ * Uma célula da "Planilha de medição e ajuste GAP da MCC #4": segmento 1–17,
+ * entrada ou saída, lado acionado ou não. "ajuste" é a medida depois de
+ * ajustar (fica vazio se não precisou); "aberto" quando o segmento estava
+ * aberto e não deu pra medir.
+ */
+export interface LinhaGapMcc4 {
+  segmento: number;
+  ponto: PontoGapMcc4;
+  lado: LadoSegmento;
+  medicao?: number;
+  ajuste?: number;
+  aberto?: boolean;
+}
+
+export const GAP_MCC4 = { nominal: 255.0, tolerancia: 0.5, segmentos: 17 } as const;
+
+/** Medida final da célula: a do ajuste quando houve, senão a medição. */
+export function medidaFinalGapMcc4(l: LinhaGapMcc4): number | undefined {
+  if (l.aberto) return undefined;
+  return l.ajuste ?? l.medicao;
+}
+
+export function foraGapMcc4(valor: number | undefined): boolean {
+  return valor !== undefined && Math.abs(valor - GAP_MCC4.nominal) > GAP_MCC4.tolerancia + 1e-9;
 }
 
 export const TOLERANCIAS = {

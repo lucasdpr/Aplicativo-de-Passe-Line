@@ -27,6 +27,7 @@ const NOMES_FICHA: Record<string, string> = {
   GAP: "GAP",
   EMPENO_DESGASTE: "Empeno e Desgaste",
   PASS_LINE_SEGMENTOS: "Pass-Line dos Segmentos",
+  GAP_MCC4: "GAP (MCC4)",
 };
 
 const SLUG_POR_TIPO: Record<TipoFicha, string> = {
@@ -34,6 +35,7 @@ const SLUG_POR_TIPO: Record<TipoFicha, string> = {
   GAP: "gap",
   EMPENO_DESGASTE: "empeno-desgaste",
   PASS_LINE_SEGMENTOS: "pass-line-segmentos",
+  GAP_MCC4: "gap-mcc4",
 };
 
 export default function AdminHistoricoPage() {
@@ -49,10 +51,17 @@ export default function AdminHistoricoPage() {
   const linhasGap = useLiveQuery(() => db.linhasGap.toArray(), []);
   const leituras = useLiveQuery(() => db.leiturasSegmentos.toArray(), []);
   const linhasDesempenadeira = useLiveQuery(() => db.linhasPassLineDesempenadeira.toArray(), []);
+  const linhasGapMcc4 = useLiveQuery(() => db.linhasGapMcc4.toArray(), []);
   const foraPorSessao = useMemo(
     () =>
-      contarForaPorSessao(sessoes ?? [], linhasGap ?? [], leituras ?? [], linhasDesempenadeira ?? []),
-    [sessoes, linhasGap, leituras, linhasDesempenadeira]
+      contarForaPorSessao(
+        sessoes ?? [],
+        linhasGap ?? [],
+        leituras ?? [],
+        linhasDesempenadeira ?? [],
+        linhasGapMcc4 ?? []
+      ),
+    [sessoes, linhasGap, leituras, linhasDesempenadeira, linhasGapMcc4]
   );
 
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState<string | null>(null);
@@ -322,7 +331,12 @@ export default function AdminHistoricoPage() {
                               ["TUDO", "PDF ver tudo"],
                               ["ATUALIZADO", "PDF atualizado"],
                             ] as const)
-                          : ([["TUDO", "Gerar PDF"]] as const)
+                          : s.tipoFicha === "GAP_MCC4"
+                            ? ([
+                                ["TUDO", "PDF ver tudo"],
+                                ["ATUALIZADO", "PDF medida final"],
+                              ] as const)
+                            : ([["TUDO", "Gerar PDF"]] as const)
                         ).map(([modo, rotulo]) => (
                           <button
                             key={modo}

@@ -5,6 +5,7 @@ import type {
   LinhaGap,
   LinhaEmpenoDesgaste,
   LeituraSegmento,
+  LinhaGapMcc4,
   Tecnico,
   Edicao,
 } from "@/types";
@@ -26,6 +27,7 @@ export class PassLineDB extends Dexie {
     number
   >;
   edicoes!: Table<Edicao, number>;
+  linhasGapMcc4!: Table<LinhaGapMcc4 & { sessaoId: string; id?: number }, number>;
 
   constructor() {
     super("passline-csn");
@@ -70,6 +72,16 @@ export class PassLineDB extends Dexie {
       linhasEmpenoDesgaste: "++id, sessaoId, nCad",
       leiturasSegmentos: "++id, sessaoId, segmento, lado",
       edicoes: "++id, sessaoId, editadoEm",
+    });
+    this.version(6).stores({
+      tecnicos: "id, matricula, papel, aprovado",
+      sessoes: "id, tipoFicha, maquina, veio, data, status, tecnicoId, criadoEm",
+      linhasPassLineDesempenadeira: "++id, sessaoId, nCad",
+      linhasGap: "++id, sessaoId, nCad",
+      linhasEmpenoDesgaste: "++id, sessaoId, nCad",
+      leiturasSegmentos: "++id, sessaoId, segmento, lado",
+      edicoes: "++id, sessaoId, editadoEm",
+      linhasGapMcc4: "++id, sessaoId, segmento",
     });
   }
 }

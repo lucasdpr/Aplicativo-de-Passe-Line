@@ -13,13 +13,14 @@ const CAMPOS_ESTRUTURAIS = new Set([
   "segmento",
   "lado",
   "posicao",
+  "ponto",
 ]);
 
 function linhasNormalizadas(linhas: object[]): string[] {
   return linhas
     .map((l) =>
       Object.entries(l)
-        .filter(([k, v]) => k !== "id" && k !== "sessaoId" && v !== undefined && v !== null && v !== "")
+        .filter(([k, v]) => k !== "id" && k !== "sessaoId" && v !== undefined && v !== null && v !== "" && v !== false)
         .map(([k, v]) => [k, typeof v === "number" ? Number(v) : v] as const)
         .sort(([a], [b]) => a.localeCompare(b))
     )
@@ -38,6 +39,8 @@ async function linhasDaSessao(tipoFicha: TipoFicha, sessaoId: string): Promise<o
       return db.linhasPassLineDesempenadeira.where("sessaoId").equals(sessaoId).toArray();
     case "PASS_LINE_SEGMENTOS":
       return db.leiturasSegmentos.where("sessaoId").equals(sessaoId).toArray();
+    case "GAP_MCC4":
+      return db.linhasGapMcc4.where("sessaoId").equals(sessaoId).toArray();
   }
 }
 

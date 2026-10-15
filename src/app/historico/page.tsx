@@ -32,6 +32,7 @@ const FICHA_INFO: Record<
   GAP: { nome: "GAP", icon: MoveHorizontal },
   EMPENO_DESGASTE: { nome: "Empeno e Desgaste", icon: GitCompareArrows },
   PASS_LINE_SEGMENTOS: { nome: "Pass-Line dos Segmentos", icon: Layers },
+  GAP_MCC4: { nome: "GAP (MCC4)", icon: MoveHorizontal },
 };
 
 export default function HistoricoPage() {
@@ -294,7 +295,9 @@ function CartaoSessao({
               sincronizado
                 ? s.tipoFicha === "GAP"
                   ? "PDF com todos os campos (1ª medida, ajuste e 2ª medida)"
-                  : "Gerar PDF oficial"
+                  : s.tipoFicha === "GAP_MCC4"
+                    ? "PDF com todas as medições e ajustes"
+                    : "Gerar PDF oficial"
                 : "Disponível após sincronizar com o servidor"
             }
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
@@ -308,13 +311,17 @@ function CartaoSessao({
             ) : (
               <FileDown size={13} />
             )}
-            {s.tipoFicha === "GAP" ? "Ver tudo" : "Gerar PDF"}
+            {s.tipoFicha === "GAP" || s.tipoFicha === "GAP_MCC4" ? "Ver tudo" : "Gerar PDF"}
           </button>
-          {s.tipoFicha === "GAP" && (
+          {(s.tipoFicha === "GAP" || s.tipoFicha === "GAP_MCC4") && (
             <button
               onClick={() => onGerarPdf(s.id, "ATUALIZADO")}
               disabled={!sincronizado || gerandoId === s.id}
-              title="PDF com o valor atualizado por Nº CAD: usa a 2ª medida quando ela já foi feita, senão a 1ª"
+              title={
+                s.tipoFicha === "GAP_MCC4"
+                  ? "PDF com a medida final de cada ponto (a do ajuste, quando houve) e o que ficou fora"
+                  : "PDF com o valor atualizado por Nº CAD: usa a 2ª medida quando ela já foi feita, senão a 1ª"
+              }
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
               style={{
                 background: "var(--primary-soft)",
@@ -326,7 +333,7 @@ function CartaoSessao({
               ) : (
                 <FileDown size={13} />
               )}
-              Atualizado
+              {s.tipoFicha === "GAP_MCC4" ? "Medida final" : "Atualizado"}
             </button>
           )}
           {ehAdmin && (

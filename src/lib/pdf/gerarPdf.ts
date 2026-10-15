@@ -12,15 +12,22 @@ import type {
   LinhaGap,
   LinhaEmpenoDesgaste,
   LeituraSegmento,
+  LinhaGapMcc4,
   TipoFicha,
 } from "@/types";
-import { TOLERANCIAS as TOLERANCIAS_MM } from "@/types";
+import {
+  GAP_MCC4,
+  TOLERANCIAS as TOLERANCIAS_MM,
+  foraGapMcc4,
+  medidaFinalGapMcc4,
+} from "@/types";
 
 const TITULOS: Record<TipoFicha, string> = {
   PASS_LINE_DESEMPENADEIRA: "MEDIÇÃO E AJUSTE DE PASS-LINE (DESEMPENADEIRA)",
   GAP: "MEDIÇÃO E AJUSTE DE GAP",
   EMPENO_DESGASTE: "MEDIÇÃO DE EMPENO E DESGASTE (DESEMPENADEIRA)",
   PASS_LINE_SEGMENTOS: "MEDIÇÃO E AJUSTE DE PASS-LINE DOS SEGMENTOS",
+  GAP_MCC4: "MEDIÇÃO E AJUSTE DE GAP",
 };
 
 /**
@@ -52,6 +59,7 @@ const TOLERANCIAS: Record<TipoFicha, string> = {
   GAP: "",
   EMPENO_DESGASTE: "EMPENO/MAXIMO 2mm",
   PASS_LINE_SEGMENTOS: "",
+  GAP_MCC4: "",
 };
 
 type LinhasPorTipo = {
@@ -59,6 +67,7 @@ type LinhasPorTipo = {
   GAP: LinhaGap[];
   EMPENO_DESGASTE: LinhaEmpenoDesgaste[];
   PASS_LINE_SEGMENTOS: LeituraSegmento[];
+  GAP_MCC4: LinhaGapMcc4[];
 };
 
 const PAGE_W = 595.28; // A4 retrato (em pé) — do jeito que é impresso
@@ -837,6 +846,140 @@ function pdfGapAtualizado(ctx: Ctx, dados: LinhaGap[]) {
   );
 }
 
+// --- GAP da MCC4: igual à "Planilha de medição e ajuste GAP da MCC #4" ---
+
+const CELULAS_GAP_MCC4 = [
+  { ponto: "ENTRADA", lado: "ACIONADO" },
+  { ponto: "ENTRADA", lado: "NAO_ACIONADO" },
+  { ponto: "SAIDA", lado: "ACIONADO" },
+  { ponto: "SAIDA", lado: "NAO_ACIONADO" },
+] as const;
+
+function gradeGapMcc4(dados: LinhaGapMcc4[]) {
+  const porChave = new Map(dados.map((l) => [`${l.segmento}|${l.ponto}|${l.lado}`, l]));
+  return Array.from({ length: GAP_MCC4.segmentos }, (_, i) => {
+    const segmento = i + 1;
+    return {
+      segmento,
+      celulas: CELULAS_GAP_MCC4.map((c) => porChave.get(`${segmento}|${c.ponto}|${c.lado}`)),
+    };
+  });
+}
+
+const ESTILO_FORA = { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true };
+const ESTILO_OK = { cor: COR_OK, fundo: COR_OK_FUNDO };
+
+function estiloValorGapMcc4(valor: number | undefined) {
+  if (valor === undefined) return undefined;
+  return foraGapMcc4(valor) ? ESTILO_FORA : ESTILO_OK;
+}
+
+const TEXTO_TOLERANCIA_GAP_MCC4 = `GAP NOMINAL ${fmt(GAP_MCC4.nominal)} mm - TOLERÂNCIA: +/- ${fmt(GAP_MCC4.tolerancia)} mm`;
+const GRUPOS_GAP_MCC4 = (porPonto: number) => [
+  { titulo: "", colunas: 1 },
+  { titulo: "ENTRADA", colunas: porPonto },
+  { titulo: "SAÍDA", colunas: porPonto },
+];
+
+function pdfGapMcc4Completo(ctx: Ctx, dados: LinhaGapMcc4[]) {
+  linhaInfo(ctx, TEXTO_TOLERANCIA_GAP_MCC4, [
+    { cor: COR_OK, fundo: COR_OK_FUNDO, texto: "Dentro" },
+    LEGENDA_FORA,
+  ]);
+  const grade = gradeGapMcc4(dados);
+  // Por célula: [medição, ajuste]
+  const textos = (l: LinhaGapMcc4 | undefined): [string, string] => {
+    if (!l) return ["", ""];
+    if (l.aberto) return ["ABERTO", ""];
+    return [fmt(l.medicao), fmt(l.ajuste)];
+  };
+  desenharTabela(
+    ctx,
+    [
+      { header: "SEGMENTO", width: 56, alinhar: "centro" },
+      ...[0, 1].flatMap(() => [
+        { header: "MED. ACION.", width: 56, alinhar: "centro" as const },
+        { header: "AJUSTE", width: 48, alinhar: "centro" as const },
+        { header: "MED. N. ACION.", width: 60, alinhar: "centro" as const },
+        { header: "AJUSTE", width: 48, alinhar: "centro" as const },
+      ]),
+    ],
+    grade.map(({ segmento, celulas }) => [
+      `Segmento ${segmento}`,
+      ...celulas.flatMap((l) => textos(l)),
+    ]),
+    {
+      larguraTotal: true,
+      caberNumaPagina: true,
+      grupos: GRUPOS_GAP_MCC4(4),
+      estiloCelula: (linha, coluna) => {
+        if (coluna === 0) return undefined;
+        const l = grade[linha].celulas[Math.floor((coluna - 1) / 2)];
+        if (!l) return undefined;
+        const ehAjuste = (coluna - 1) % 2 === 1;
+        if (l.aberto) return ehAjuste ? undefined : ESTILO_FORA;
+        return estiloValorGapMcc4(ehAjuste ? l.ajuste : l.medicao);
+      },
+    }
+  );
+}
+
+function pdfGapMcc4Final(ctx: Ctx, dados: LinhaGapMcc4[]) {
+  linhaInfo(ctx, TEXTO_TOLERANCIA_GAP_MCC4, [
+    { cor: COR_PRIMEIRA, fundo: COR_PRIMEIRA_FUNDO, texto: "* Medida após ajuste" },
+    LEGENDA_FORA,
+  ]);
+  const grade = gradeGapMcc4(dados).map(({ segmento, celulas }) => {
+    const finais = celulas.map((l) => ({
+      l,
+      valor: l ? medidaFinalGapMcc4(l) : undefined,
+      ajustado: !!l && !l.aberto && l.ajuste !== undefined && l.ajuste !== null,
+    }));
+    const preenchidas = finais.filter((f) => f.l && (f.l.aberto || f.valor !== undefined));
+    const situacao =
+      preenchidas.length === 0
+        ? ""
+        : finais.some((f) => f.l?.aberto || foraGapMcc4(f.valor))
+          ? "FORA"
+          : "OK";
+    return { segmento, finais, situacao };
+  });
+  desenharTabela(
+    ctx,
+    [
+      { header: "SEGMENTO", width: 70, alinhar: "centro" },
+      { header: "ACIONADO", width: 85, alinhar: "centro" },
+      { header: "NÃO ACIONADO", width: 85, alinhar: "centro" },
+      { header: "ACIONADO", width: 85, alinhar: "centro" },
+      { header: "NÃO ACIONADO", width: 85, alinhar: "centro" },
+      { header: "SITUAÇÃO", width: 70, alinhar: "centro" },
+    ],
+    grade.map(({ segmento, finais, situacao }) => [
+      `Segmento ${segmento}`,
+      ...finais.map((f) => (f.l?.aberto ? "ABERTO" : fmt(f.valor) + (f.ajustado ? "*" : ""))),
+      situacao,
+    ]),
+    {
+      larguraTotal: true,
+      caberNumaPagina: true,
+      grupos: [...GRUPOS_GAP_MCC4(2), { titulo: "", colunas: 1 }],
+      estiloCelula: (linha, coluna) => {
+        const g = grade[linha];
+        if (coluna >= 1 && coluna <= 4) {
+          const f = g.finais[coluna - 1];
+          if (f.l?.aberto || foraGapMcc4(f.valor)) return ESTILO_FORA;
+          if (f.ajustado) return { cor: COR_PRIMEIRA, fundo: COR_PRIMEIRA_FUNDO };
+          return undefined;
+        }
+        if (coluna === 5 && g.situacao) {
+          return g.situacao === "OK" ? { ...ESTILO_OK, negrito: true } : ESTILO_FORA;
+        }
+        return undefined;
+      },
+    }
+  );
+}
+
 export type ModoPdfGap = "TUDO" | "ATUALIZADO";
 
 export async function gerarPdfSessao(
@@ -851,9 +994,11 @@ export async function gerarPdfSessao(
   const ctx: Ctx = { doc, font, bold, page, y: PAGE_H - MARGIN };
 
   const versaoGap =
-    sessao.tipoFicha === "GAP"
+    sessao.tipoFicha === "GAP" || sessao.tipoFicha === "GAP_MCC4"
       ? modoGap === "ATUALIZADO"
-        ? "VERSÃO ATUALIZADA"
+        ? sessao.tipoFicha === "GAP_MCC4"
+          ? "MEDIDA FINAL"
+          : "VERSÃO ATUALIZADA"
         : "VERSÃO COMPLETA"
       : undefined;
   cabecalho(ctx, sessao, versaoGap);
@@ -898,6 +1043,18 @@ export async function gerarPdfSessao(
       const dados = [...(linhas as LinhaGap[])].sort((a, b) => a.nCad - b.nCad);
       if (modoGap === "ATUALIZADO") pdfGapAtualizado(ctx, dados);
       else pdfGapCompleto(ctx, dados);
+      break;
+    }
+    case "GAP_MCC4": {
+      const dados = (linhas as LinhaGapMcc4[]).map((l) => ({
+        ...l,
+        // O banco devolve numeric como texto em alguns casos.
+        segmento: Number(l.segmento),
+        medicao: l.medicao === null || l.medicao === undefined ? undefined : Number(l.medicao),
+        ajuste: l.ajuste === null || l.ajuste === undefined ? undefined : Number(l.ajuste),
+      }));
+      if (modoGap === "ATUALIZADO") pdfGapMcc4Final(ctx, dados);
+      else pdfGapMcc4Completo(ctx, dados);
       break;
     }
     case "EMPENO_DESGASTE": {

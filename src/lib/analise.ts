@@ -1,7 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buscarTodas } from "@/lib/buscarTodas";
 import { hojeIso } from "@/lib/datas";
-import { TOLERANCIAS, type Maquina, type TipoFicha, type Veio } from "@/types";
+import {
+  GAP_MCC4,
+  TOLERANCIAS,
+  type Maquina,
+  type TipoFicha,
+  type Veio,
+} from "@/types";
 import { comboLabel, intervaloDias, type Combo } from "@/lib/prazos";
 
 const VEIOS_POR_MAQUINA: Record<Maquina, Veio[]> = {
@@ -20,7 +26,7 @@ const FICHAS_COM_ANALISE: TipoFicha[] = [
 const FICHAS_COM_ANALISE_POR_MAQUINA: Record<Maquina, TipoFicha[]> = {
   MCC2: FICHAS_COM_ANALISE,
   MCC3: FICHAS_COM_ANALISE,
-  MCC4: ["PASS_LINE_SEGMENTOS"],
+  MCC4: ["PASS_LINE_SEGMENTOS", "GAP_MCC4"],
 };
 
 function toleranciaSegmentos(maquina: Maquina): number {
@@ -209,6 +215,7 @@ export async function buscarAnaliseCombos(
     { data: gap },
     { data: empeno },
     { data: segmentos },
+    { data: gapMcc4 },
   ] =
     await Promise.all([
       // Tudo em páginas de 1000 (limite da API) — linhas_gap já passou disso.
@@ -247,6 +254,13 @@ export async function buscarAnaliseCombos(
         supabase
           .from("leituras_segmentos")
           .select("sessao_id, segmento, valor")
+          .order("id")
+          .range(de, ate)
+      ),
+      buscarTodas<Record<string, unknown>>((de, ate) =>
+        supabase
+          .from("linhas_gap_mcc4")
+          .select("sessao_id, segmento, medicao, ajuste, aberto")
           .order("id")
           .range(de, ate)
       ),
@@ -365,6 +379,30 @@ export async function buscarAnaliseCombos(
     agregadoPorSessao.set(sessaoId, {
       valor: (somaAnterior + valor) / (atual.total + 1),
       fora: atual.fora + (valor > tolerancia + 1e-9 ? 1 : 0),
+      total: atual.total + 1,
+    });
+  }
+
+  // GAP da MCC4: desvio da medida final (a do ajuste, quando houve) em
+  // relação ao nominal de 255,00. Ponto "aberto" não tem medida e fica fora.
+  for (const linha of gapMcc4 ?? []) {
+    const sessaoId = linha.sessao_id as string;
+    const sessao = sessaoPorId.get(sessaoId);
+    if (!sessao || linha.aberto) continue;
+    const bruto = linha.ajuste ?? linha.medicao;
+    if (bruto === null || bruto === undefined) continue;
+    const segmento = Number(linha.segmento);
+    const valor = Math.abs(Number(bruto) - GAP_MCC4.nominal);
+    const comboAgregado = comboDaSessao(sessao);
+    atualizarPior(comboAgregado, { nCad: segmento, valor, data: sessao.data }, false);
+    atualizarNCad(comboAgregado, segmento, valor, sessao.data, false);
+    comboAgregado.somaTolerancia += GAP_MCC4.tolerancia;
+    comboAgregado.contagemTolerancia += 1;
+    const atual = agregadoPorSessao.get(sessaoId) ?? { valor: null, fora: 0, total: 0 };
+    const somaAnterior = (atual.valor ?? 0) * atual.total;
+    agregadoPorSessao.set(sessaoId, {
+      valor: (somaAnterior + valor) / (atual.total + 1),
+      fora: atual.fora + (valor > GAP_MCC4.tolerancia + 1e-9 ? 1 : 0),
       total: atual.total + 1,
     });
   }
@@ -571,6 +609,8 @@ function descricaoDoValor(tipoFicha: TipoFicha): string {
       return "Diâmetro médio do rolo";
     case "PASS_LINE_SEGMENTOS":
       return "Desvio médio dos segmentos";
+    case "GAP_MCC4":
+      return "Desvio médio do GAP nominal (255,00)";
     default:
       return "Valor médio";
   }

@@ -8,6 +8,7 @@ const TABELA_LOCAL_POR_TIPO = {
   GAP: db.linhasGap,
   EMPENO_DESGASTE: db.linhasEmpenoDesgaste,
   PASS_LINE_SEGMENTOS: db.leiturasSegmentos,
+  GAP_MCC4: db.linhasGapMcc4,
 } as const;
 
 const NOMES_FICHA: Record<TipoFicha, string> = {
@@ -15,6 +16,7 @@ const NOMES_FICHA: Record<TipoFicha, string> = {
   GAP: "GAP",
   EMPENO_DESGASTE: "Empeno e Desgaste",
   PASS_LINE_SEGMENTOS: "Pass-Line dos Segmentos",
+  GAP_MCC4: "GAP (MCC4)",
 };
 
 function notificarConclusao(sessao: SessaoMedicao) {

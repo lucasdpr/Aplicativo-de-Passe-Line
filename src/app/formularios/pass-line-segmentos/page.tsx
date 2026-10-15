@@ -42,13 +42,16 @@ interface RascunhoPassLineSegmentos {
   leituras: LeituraSegmento[];
 }
 
-const POSICOES_INICIAIS = 4;
+// Na MCC4 são 2 pontos por lado (1º e último rolo); nas MCC2/MCC3, 4.
+function posicoesIniciais(maquina: Maquina) {
+  return maquina === "MCC4" ? 2 : 4;
+}
 const LADOS: { key: LadoSegmento; label: string }[] = [
   { key: "ACIONADO", label: "Lado Acionado" },
   { key: "NAO_ACIONADO", label: "Lado Não Acionado" },
 ];
 
-// A MCC4 usa segmentos numerados 1–8 (não tem "0" nem "D"), com tolerância
+// A MCC4 usa segmentos numerados 1–17 (não tem "0" nem "D"), com tolerância
 // própria — as demais (MCC2/MCC3) usam os segmentos padrão 0–6 e D.
 function segmentosDaMaquina(maquina: Maquina): string[] {
   return maquina === "MCC4" ? SEGMENTOS_MCC4 : SEGMENTOS_PADRAO;
@@ -62,7 +65,7 @@ function estadoInicial(maquina: Maquina): LeituraSegmento[] {
   const leituras: LeituraSegmento[] = [];
   for (const segmento of segmentosDaMaquina(maquina)) {
     for (const { key: lado } of LADOS) {
-      for (let posicao = 1; posicao <= POSICOES_INICIAIS; posicao++) {
+      for (let posicao = 1; posicao <= posicoesIniciais(maquina); posicao++) {
         leituras.push({ segmento, lado, posicao });
       }
     }
