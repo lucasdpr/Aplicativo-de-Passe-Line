@@ -154,7 +154,8 @@ function GapMcc4Form() {
   }
 
   function setValor(alvo: LinhaGapMcc4, campo: Campo, valorTexto: string) {
-    const { texto, numero } = processarEntradaPontoFixo(valorTexto, 3, 2);
+    // Medição: 3 dígitos antes da vírgula (255,10). Calço: 1 (0,60).
+    const { texto, numero } = processarEntradaPontoFixo(valorTexto, campo === "medicao" ? 3 : 1, 2);
     const k = `${chave(alvo)}|${campo}`;
     setTextoDigitado((prev) => {
       const novo = new Map(prev);
@@ -162,7 +163,9 @@ function GapMcc4Form() {
       else novo.set(k, texto);
       return novo;
     });
-    const valor = numero === undefined || Number.isNaN(numero) ? undefined : Math.min(999.99, Math.max(0, numero));
+    const limite = campo === "medicao" ? 999.99 : 9.99;
+    const valor =
+      numero === undefined || Number.isNaN(numero) ? undefined : Math.min(limite, Math.max(0, numero));
     gravar(linhas.map((l) => (chave(l) === chave(alvo) ? { ...l, [campo]: valor } : l)));
   }
 
@@ -311,9 +314,10 @@ function GapMcc4Form() {
       <SessaoHeader value={header} onChange={handleHeaderChange} maquinas={["MCC4"]} />
 
       <div className="surface p-3 text-xs text-[var(--text-dim)]">
-        Digite só os números: os 3 primeiros são os milímetros e o resto vira decimal
-        (&quot;25510&quot; = 255,10). <b>Ajuste</b> é a medida depois de ajustar; deixe vazio
-        se não precisou. Use <b>AB</b> quando o segmento estiver aberto.
+        Digite só os números. Medição: os 3 primeiros são os milímetros e o resto vira
+        decimal (&quot;25510&quot; = 255,10). <b>Ajuste</b> é quantos mm de calço foram
+        colocados (&quot;060&quot; = 0,60); deixe vazio se não precisou. Use <b>AB</b> quando
+        o segmento estiver aberto (fica sem medida e não conta como fora).
       </div>
 
       <div className="surface overflow-x-auto p-0">
@@ -344,7 +348,7 @@ function GapMcc4Form() {
                     >
                       Medição {label.toLowerCase()}
                     </th>
-                    <th className="p-1.5 font-medium text-[var(--text-faint)]">Ajuste</th>
+                    <th className="p-1.5 font-medium text-[var(--text-faint)]">Ajuste (calço mm)</th>
                   </Fragment>
                 ))
               )}
@@ -366,7 +370,7 @@ function GapMcc4Form() {
                           <div className="flex items-center gap-1">
                             {l.aberto ? (
                               <span
-                                className="input-cell input-fora-tolerancia flex items-center justify-center font-semibold"
+                                className="input-cell flex items-center justify-center font-semibold text-[var(--text-faint)]"
                                 style={{ minWidth: "4.5rem" }}
                               >
                                 ABERTO
@@ -387,8 +391,8 @@ function GapMcc4Form() {
                               title={l.aberto ? "Desmarcar aberto" : "Marcar como aberto"}
                               className="rounded px-1 py-0.5 text-[0.6rem] font-semibold"
                               style={{
-                                background: l.aberto ? "var(--danger-soft)" : "var(--surface-raised)",
-                                color: l.aberto ? "#fca5a5" : "var(--text-faint)",
+                                background: l.aberto ? "var(--primary-soft)" : "var(--surface-raised)",
+                                color: l.aberto ? "var(--primary-strong)" : "var(--text-faint)",
                               }}
                             >
                               AB
@@ -401,7 +405,8 @@ function GapMcc4Form() {
                             inputMode="decimal"
                             disabled={l.aberto}
                             aria-label={`Segmento ${segmento} ${ponto} ${lado} ajuste`}
-                            className={`input-cell !w-[4.5rem] text-center disabled:opacity-30 ${foraGapMcc4(l.ajuste) ? "input-fora-tolerancia" : ""}`}
+                            placeholder="calço"
+                            className="input-cell !w-[4.5rem] text-center disabled:opacity-30"
                             value={l.aberto ? "" : textoCelula(l, "ajuste")}
                             onChange={(e) => setValor(l, "ajuste", e.target.value)}
                           />

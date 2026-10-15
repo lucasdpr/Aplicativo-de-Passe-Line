@@ -1,8 +1,7 @@
 import { dentesPassLineMcc4 } from "@/lib/passLineMcc4";
 import {
   TOLERANCIAS,
-  foraGapMcc4,
-  medidaFinalGapMcc4,
+  situacaoGapMcc4,
   type LeituraSegmento,
   type LinhaGap,
   type LinhaGapMcc4,
@@ -43,7 +42,7 @@ export function contarForaPorSessao(
   }
 
   for (const l of linhasGapMcc4) {
-    if (l.aberto || foraGapMcc4(medidaFinalGapMcc4(l))) somar(l.sessaoId);
+    if (situacaoGapMcc4(l) === "FORA") somar(l.sessaoId);
   }
 
   for (const l of linhasDesempenadeira) {

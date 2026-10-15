@@ -423,13 +423,13 @@ export async function buscarAnaliseCombos(
     });
   }
 
-  // GAP da MCC4: desvio da medida final (a do ajuste, quando houve) em
+  // GAP da MCC4: desvio da medição (como encontrado, antes do calço) em
   // relação ao nominal de 255,00. Ponto "aberto" não tem medida e fica fora.
   for (const linha of gapMcc4 ?? []) {
     const sessaoId = linha.sessao_id as string;
     const sessao = sessaoPorId.get(sessaoId);
     if (!sessao || linha.aberto) continue;
-    const bruto = linha.ajuste ?? linha.medicao;
+    const bruto = linha.medicao;
     if (bruto === null || bruto === undefined) continue;
     const segmento = Number(linha.segmento);
     const valor = Math.abs(Number(bruto) - GAP_MCC4.nominal);
@@ -650,7 +650,7 @@ function descricaoDoValor(tipoFicha: TipoFicha): string {
     case "PASS_LINE_SEGMENTOS":
       return "Desvio médio (MCC4: dente médio entre segmentos)";
     case "GAP_MCC4":
-      return "Desvio médio do GAP nominal (255,00)";
+      return "Desvio médio medido do GAP nominal (255,00), antes do calço";
     default:
       return "Valor médio";
   }

@@ -18,8 +18,8 @@ import type {
 import {
   GAP_MCC4,
   TOLERANCIAS as TOLERANCIAS_MM,
-  foraGapMcc4,
-  medidaFinalGapMcc4,
+  situacaoGapMcc4,
+  type SituacaoGapMcc4,
 } from "@/types";
 import { TOLERANCIA_DENTE_MCC4, dentesPassLineMcc4, denteFora } from "@/lib/passLineMcc4";
 
@@ -871,13 +871,26 @@ function gradeGapMcc4(dados: LinhaGapMcc4[]) {
 
 const ESTILO_FORA = { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true };
 const ESTILO_OK = { cor: COR_OK, fundo: COR_OK_FUNDO };
+const ESTILO_AJUSTADO = { cor: COR_PRIMEIRA, fundo: COR_PRIMEIRA_FUNDO, negrito: true };
+const ESTILO_ABERTO = { cor: COR_TEXTO_SUAVE, fundo: COR_ZEBRA };
 
-function estiloValorGapMcc4(valor: number | undefined) {
-  if (valor === undefined) return undefined;
-  return foraGapMcc4(valor) ? ESTILO_FORA : ESTILO_OK;
+function estiloSituacaoGapMcc4(sit: SituacaoGapMcc4 | undefined) {
+  switch (sit) {
+    case "OK":
+      return ESTILO_OK;
+    case "FORA":
+      return ESTILO_FORA;
+    case "AJUSTADO":
+      return ESTILO_AJUSTADO;
+    case "ABERTO":
+      return ESTILO_ABERTO;
+    default:
+      return undefined;
+  }
 }
 
 const TEXTO_TOLERANCIA_GAP_MCC4 = `GAP NOMINAL ${fmt(GAP_MCC4.nominal)} mm - TOLERÂNCIA: +/- ${fmt(GAP_MCC4.tolerancia)} mm`;
+const LEGENDA_AJUSTADO = { cor: COR_PRIMEIRA, fundo: COR_PRIMEIRA_FUNDO, texto: "Fora, calço colocado" };
 const GRUPOS_GAP_MCC4 = (porPonto: number) => [
   { titulo: "", colunas: 1 },
   { titulo: "ENTRADA", colunas: porPonto },
@@ -888,9 +901,10 @@ function pdfGapMcc4Completo(ctx: Ctx, dados: LinhaGapMcc4[]) {
   linhaInfo(ctx, TEXTO_TOLERANCIA_GAP_MCC4, [
     { cor: COR_OK, fundo: COR_OK_FUNDO, texto: "Dentro" },
     LEGENDA_FORA,
+    LEGENDA_AJUSTADO,
   ]);
   const grade = gradeGapMcc4(dados);
-  // Por célula: [medição, ajuste]
+  // Por célula: [medição, calço]
   const textos = (l: LinhaGapMcc4 | undefined): [string, string] => {
     if (!l) return ["", ""];
     if (l.aberto) return ["ABERTO", ""];
@@ -902,9 +916,9 @@ function pdfGapMcc4Completo(ctx: Ctx, dados: LinhaGapMcc4[]) {
       { header: "SEGMENTO", width: 56, alinhar: "centro" },
       ...[0, 1].flatMap(() => [
         { header: "MED. ACION.", width: 56, alinhar: "centro" as const },
-        { header: "AJUSTE", width: 48, alinhar: "centro" as const },
+        { header: "AJUSTE (CALÇO)", width: 52, alinhar: "centro" as const },
         { header: "MED. N. ACION.", width: 60, alinhar: "centro" as const },
-        { header: "AJUSTE", width: 48, alinhar: "centro" as const },
+        { header: "AJUSTE (CALÇO)", width: 52, alinhar: "centro" as const },
       ]),
     ],
     grade.map(({ segmento, celulas }) => [
@@ -920,33 +934,37 @@ function pdfGapMcc4Completo(ctx: Ctx, dados: LinhaGapMcc4[]) {
         const l = grade[linha].celulas[Math.floor((coluna - 1) / 2)];
         if (!l) return undefined;
         const ehAjuste = (coluna - 1) % 2 === 1;
-        if (l.aberto) return ehAjuste ? undefined : ESTILO_FORA;
-        return estiloValorGapMcc4(ehAjuste ? l.ajuste : l.medicao);
+        if (ehAjuste) return undefined;
+        return estiloSituacaoGapMcc4(situacaoGapMcc4(l));
       },
     }
   );
 }
 
 function pdfGapMcc4Final(ctx: Ctx, dados: LinhaGapMcc4[]) {
-  linhaInfo(ctx, TEXTO_TOLERANCIA_GAP_MCC4, [
-    { cor: COR_PRIMEIRA, fundo: COR_PRIMEIRA_FUNDO, texto: "* Medida após ajuste" },
-    LEGENDA_FORA,
-  ]);
+  linhaInfo(ctx, TEXTO_TOLERANCIA_GAP_MCC4, [LEGENDA_FORA, LEGENDA_AJUSTADO]);
   const grade = gradeGapMcc4(dados).map(({ segmento, celulas }) => {
-    const finais = celulas.map((l) => ({
-      l,
-      valor: l ? medidaFinalGapMcc4(l) : undefined,
-      ajustado: !!l && !l.aberto && l.ajuste !== undefined && l.ajuste !== null,
-    }));
-    const preenchidas = finais.filter((f) => f.l && (f.l.aberto || f.valor !== undefined));
+    const sits = celulas.map((l) => (l ? situacaoGapMcc4(l) : undefined));
+    const presentes = sits.filter((x) => x !== undefined);
     const situacao =
-      preenchidas.length === 0
+      presentes.length === 0
         ? ""
-        : finais.some((f) => f.l?.aberto || foraGapMcc4(f.valor))
+        : presentes.includes("FORA")
           ? "FORA"
-          : "OK";
-    return { segmento, finais, situacao };
+          : presentes.includes("AJUSTADO")
+            ? "AJUSTADO"
+            : presentes.every((x) => x === "ABERTO")
+              ? "ABERTO"
+              : "OK";
+    return { segmento, celulas, sits, situacao };
   });
+  const texto = (l: LinhaGapMcc4 | undefined) => {
+    if (!l) return "";
+    if (l.aberto) return "ABERTO";
+    const sit = situacaoGapMcc4(l);
+    if (sit === "AJUSTADO") return `${fmt(l.medicao)} (+${fmt(l.ajuste)})`;
+    return fmt(l.medicao);
+  };
   desenharTabela(
     ctx,
     [
@@ -957,9 +975,9 @@ function pdfGapMcc4Final(ctx: Ctx, dados: LinhaGapMcc4[]) {
       { header: "NÃO ACIONADO", width: 85, alinhar: "centro" },
       { header: "SITUAÇÃO", width: 70, alinhar: "centro" },
     ],
-    grade.map(({ segmento, finais, situacao }) => [
+    grade.map(({ segmento, celulas, situacao }) => [
       `Segmento ${segmento}`,
-      ...finais.map((f) => (f.l?.aberto ? "ABERTO" : fmt(f.valor) + (f.ajustado ? "*" : ""))),
+      ...celulas.map(texto),
       situacao,
     ]),
     {
@@ -969,13 +987,12 @@ function pdfGapMcc4Final(ctx: Ctx, dados: LinhaGapMcc4[]) {
       estiloCelula: (linha, coluna) => {
         const g = grade[linha];
         if (coluna >= 1 && coluna <= 4) {
-          const f = g.finais[coluna - 1];
-          if (f.l?.aberto || foraGapMcc4(f.valor)) return ESTILO_FORA;
-          if (f.ajustado) return { cor: COR_PRIMEIRA, fundo: COR_PRIMEIRA_FUNDO };
-          return undefined;
+          const sit = g.sits[coluna - 1];
+          return sit === "OK" ? undefined : estiloSituacaoGapMcc4(sit);
         }
         if (coluna === 5 && g.situacao) {
-          return g.situacao === "OK" ? { ...ESTILO_OK, negrito: true } : ESTILO_FORA;
+          const est = estiloSituacaoGapMcc4(g.situacao as SituacaoGapMcc4);
+          return est ? { ...est, negrito: true } : undefined;
         }
         return undefined;
       },
@@ -1150,6 +1167,7 @@ export async function gerarPdfSessao(
         ...l,
         // O banco devolve numeric como texto em alguns casos.
         segmento: Number(l.segmento),
+        aberto: !!l.aberto,
         medicao: l.medicao === null || l.medicao === undefined ? undefined : Number(l.medicao),
         ajuste: l.ajuste === null || l.ajuste === undefined ? undefined : Number(l.ajuste),
       }));
