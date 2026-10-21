@@ -151,7 +151,7 @@ export default function HistoricoPage() {
       <div className="flex min-h-screen flex-col md:flex-row">
         <AppSidebar papel={tecnico?.papel} />
         <div className="min-w-0 flex-1">
-          <StatusBar />
+          <StatusBar comMenu />
           <main className="mx-auto w-full max-w-2xl flex-1 p-4">
         <div className="mb-4 mt-3 flex items-center justify-between gap-2">
           <h1 className="font-display text-xl font-bold tracking-tight">

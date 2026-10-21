@@ -310,3 +310,174 @@ body {
 .table-industrial tbody td:first-child {
   background: var(--surface);
 }
+
+/* --- Menu lateral --- */
+
+.sidebar-marca {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.25rem 1.25rem 1.1rem;
+  border-radius: 0.75rem;
+}
+
+.sidebar-acao {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.7rem;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #04201c;
+  background-image: linear-gradient(180deg, var(--primary-strong), var(--primary));
+  box-shadow: 0 6px 18px -8px rgba(45, 212, 191, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: filter 0.2s ease, transform 0.1s ease;
+}
+
+.sidebar-acao:hover {
+  filter: brightness(1.07);
+}
+
+.sidebar-acao:active {
+  transform: translateY(1px);
+}
+
+.sidebar-grupo {
+  padding: 0 0.75rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+}
+
+.sidebar-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-item:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.sidebar-item[aria-current="page"] {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+/* Marcador à esquerda do item ativo */
+.sidebar-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -0.75rem;
+  top: 0.45rem;
+  bottom: 0.45rem;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary-strong);
+}
+
+.sidebar-contador {
+  min-width: 1.35rem;
+  border-radius: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--warning-soft);
+  color: #fbbf24;
+}
+
+.sidebar-usuario {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.4rem 0.55rem 0.55rem;
+  background: var(--surface-raised);
+}
+
+.sidebar-avatar {
+  display: flex;
+  height: 2.1rem;
+  width: 2.1rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+}
+
+.sidebar-sair,
+.sidebar-botao-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0.55rem;
+  padding: 0.45rem;
+  color: var(--text-faint);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-botao-menu {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--surface-raised);
+}
+
+.sidebar-sair:hover,
+.sidebar-botao-menu:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.sidebar-gaveta {
+  animation: gaveta-entrar 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes gaveta-entrar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* --- Acabamento geral --- */
+
+:where(a, button, [role="button"], summary):focus-visible {
+  outline: 2px solid var(--primary-strong);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-gaveta {
+    animation: none;
+  }
+}

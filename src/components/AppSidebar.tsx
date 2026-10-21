@@ -1,128 +1,255 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlarmClock,
-  ClipboardList,
+  ClipboardPlus,
+  FolderClock,
   History,
   LineChart,
+  LogOut,
   Menu,
-  ShieldCheck,
+  Users,
   X,
 } from "lucide-react";
 import type { PapelTecnico } from "@/types";
+import { listarTecnicos, useAuthStore } from "@/lib/auth";
 import { BotaoNotificacoes } from "@/components/BotaoNotificacoes";
+import { IndicadorConexao } from "@/components/StatusBar";
 
 interface ItemNav {
   href: string;
   label: string;
-  icon: typeof ClipboardList;
+  icon: typeof History;
+  /** Outras rotas que também deixam este item ativo. */
+  tambem?: string[];
+  contador?: number;
 }
 
+interface Grupo {
+  titulo: string;
+  itens: ItemNav[];
+}
+
+const ROTULO_PAPEL: Record<PapelTecnico, string> = {
+  ADMIN: "Administrador",
+  TECNICO: "Técnico",
+  VISUALIZADOR: "Visualizador",
+};
+
+function iniciais(nome: string) {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return "?";
+  const primeira = partes[0][0];
+  const ultima = partes.length > 1 ? partes[partes.length - 1][0] : "";
+  return (primeira + ultima).toUpperCase();
+}
+
+/** Menu único do app — o mesmo em todas as telas, pra ninguém se perder. */
 export function AppSidebar({ papel }: { papel?: PapelTecnico }) {
   const pathname = usePathname();
+  const tecnico = useAuthStore((s) => s.tecnicoLogado);
+  const logout = useAuthStore((s) => s.logout);
   const [abertoMobile, setAbertoMobile] = useState(false);
-  const ehVisualizador = papel === "VISUALIZADOR";
+  const [pendentes, setPendentes] = useState(0);
+  const papelAtual = papel ?? tecnico?.papel ?? "TECNICO";
+  const ehAdmin = papelAtual === "ADMIN";
+  const podeMedir = papelAtual !== "VISUALIZADOR";
 
-  const itens: ItemNav[] = [
-    ...(ehVisualizador ? [] : [{ href: "/", label: "Fazer medição", icon: ClipboardList }]),
-    { href: "/historico", label: "Histórico", icon: History },
-    { href: "/prazos", label: "Prazos", icon: AlarmClock },
-    { href: "/admin/analise", label: "Análise e variação", icon: LineChart },
-    ...(papel === "ADMIN"
-      ? [{ href: "/admin", label: "Painel admin", icon: ShieldCheck }]
+  useEffect(() => {
+    if (!ehAdmin) return;
+    listarTecnicos()
+      .then((lista) => setPendentes(lista.filter((t) => !t.aprovado).length))
+      .catch(() => {});
+  }, [ehAdmin]);
+
+  useEffect(() => {
+    if (!abertoMobile) return;
+    const fechar = (e: KeyboardEvent) => e.key === "Escape" && setAbertoMobile(false);
+    window.addEventListener("keydown", fechar);
+    return () => window.removeEventListener("keydown", fechar);
+  }, [abertoMobile]);
+
+  const grupos: Grupo[] = [
+    {
+      titulo: "Acompanhar",
+      itens: [
+        { href: "/prazos", label: "Prazos", icon: AlarmClock, tambem: ["/admin"] },
+        { href: "/admin/analise", label: "Análise e variação", icon: LineChart },
+        { href: "/historico", label: "Histórico", icon: History },
+      ],
+    },
+    ...(ehAdmin
+      ? [
+          {
+            titulo: "Administração",
+            itens: [
+              { href: "/admin/historico", label: "Histórico completo", icon: FolderClock },
+              { href: "/admin/tecnicos", label: "Técnicos", icon: Users, contador: pendentes },
+            ],
+          },
+        ]
       : []),
   ];
 
+  const ativo = (item: ItemNav) =>
+    pathname === item.href || (item.tambem ?? []).includes(pathname);
+  const medindo = pathname === "/" || pathname.startsWith("/formularios");
+
   const conteudo = (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-3 p-5">
-        <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-          style={{ background: "var(--primary-soft)" }}
-        >
-          <ClipboardList size={19} style={{ color: "var(--primary-strong)" }} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate font-display text-sm font-bold tracking-tight">
+      <Link href="/" className="sidebar-marca" onClick={() => setAbertoMobile(false)}>
+        <Image
+          src="/icons/logo-mark.png"
+          alt=""
+          width={36}
+          height={36}
+          className="rounded-[10px]"
+        />
+        <span className="min-w-0">
+          <span className="block truncate font-display text-[0.95rem] font-semibold tracking-tight">
             CSN Pass-Line
-          </div>
-          <div className="truncate text-xs text-[var(--text-faint)]">
+          </span>
+          <span className="block truncate text-xs text-[var(--text-faint)]">
             Medição e ajuste
-          </div>
-        </div>
-      </div>
+          </span>
+        </span>
+      </Link>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3">
-        {itens.map((item) => {
-          const Icon = item.icon;
-          const ativo = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setAbertoMobile(false)}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition"
-              style={
-                ativo
-                  ? { background: "var(--primary-soft)", color: "var(--primary-strong)" }
-                  : { color: "var(--text-dim)" }
-              }
-            >
-              <Icon size={17} className="shrink-0" />
-              <span className="flex-1 truncate">{item.label}</span>
-            </Link>
-          );
-        })}
+      {podeMedir && (
+        <div className="px-3 pb-5">
+          <Link
+            href="/"
+            onClick={() => setAbertoMobile(false)}
+            aria-current={medindo ? "page" : undefined}
+            className="sidebar-acao"
+          >
+            <ClipboardPlus size={17} strokeWidth={2} />
+            Fazer medição
+          </Link>
+        </div>
+      )}
+
+      <nav aria-label="Menu principal" className="flex-1 space-y-6 overflow-y-auto px-3 pb-4">
+        {grupos.map((grupo) => (
+          <div key={grupo.titulo}>
+            <div className="sidebar-grupo">{grupo.titulo}</div>
+            <ul className="space-y-0.5">
+              {grupo.itens.map((item) => {
+                const Icon = item.icon;
+                const estaAtivo = ativo(item);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={() => setAbertoMobile(false)}
+                      aria-current={estaAtivo ? "page" : undefined}
+                      className="sidebar-item"
+                    >
+                      <Icon size={17} strokeWidth={1.8} className="shrink-0" />
+                      <span className="flex-1 truncate">{item.label}</span>
+                      {!!item.contador && (
+                        <span
+                          className="sidebar-contador"
+                          title={`${item.contador} cadastro(s) aguardando aprovação`}
+                        >
+                          {item.contador}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
-      <div className="p-3">
+      <div className="space-y-2 border-t p-3" style={{ borderColor: "var(--border)" }}>
         <BotaoNotificacoes />
+        {tecnico && (
+          <div className="sidebar-usuario">
+            <span className="sidebar-avatar" aria-hidden>
+              {iniciais(tecnico.nome)}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-[var(--text)]">
+                {tecnico.nome}
+              </span>
+              <span className="block truncate text-xs text-[var(--text-faint)]">
+                {ROTULO_PAPEL[papelAtual]} · matr. {tecnico.matricula}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={logout}
+              className="sidebar-sair"
+              aria-label="Sair"
+              title="Sair"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 
   return (
     <>
-      {/* Desktop: coluna fixa */}
       <aside
-        className="sticky top-0 hidden h-screen shrink-0 md:flex md:w-60"
+        className="sticky top-0 hidden h-dvh w-64 shrink-0 md:flex"
         style={{ borderRight: "1px solid var(--border)", background: "var(--surface)" }}
       >
         {conteudo}
       </aside>
 
-      {/* Mobile: botão + drawer */}
-      <div className="flex items-center p-4 md:hidden">
-        <button
-          onClick={() => setAbertoMobile(true)}
-          className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium"
-          style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
-        >
-          <Menu size={16} />
-          Menu
-        </button>
+      {/* Celular: barra com o menu e o atalho principal */}
+      <div
+        className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b px-4 py-2.5 md:hidden"
+        style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+      >
+        <div className="flex items-center gap-2.5">
+          <Image src="/icons/logo-mark.png" alt="CSN Pass-Line" width={28} height={28} className="rounded-md" />
+          <button
+            type="button"
+            onClick={() => setAbertoMobile(true)}
+            className="sidebar-botao-menu"
+            aria-label="Abrir menu"
+            aria-expanded={abertoMobile}
+          >
+            <Menu size={18} />
+            Menu
+          </button>
+          <IndicadorConexao compacto />
+        </div>
+        {podeMedir && !medindo && (
+          <Link href="/" className="sidebar-acao !w-auto !py-1.5 !text-sm">
+            <ClipboardPlus size={15} /> Fazer medição
+          </Link>
+        )}
       </div>
 
       {abertoMobile && (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
           <div
-            className="absolute inset-0"
-            style={{ background: "rgba(0,0,0,0.5)" }}
+            className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
             onClick={() => setAbertoMobile(false)}
           />
           <div
-            className="absolute left-0 top-0 h-full w-72 max-w-[80vw]"
-            style={{ background: "var(--surface)" }}
+            className="sidebar-gaveta absolute left-0 top-0 h-dvh w-72 max-w-[85vw]"
+            style={{ background: "var(--surface)", borderRight: "1px solid var(--border)" }}
           >
             <button
+              type="button"
               onClick={() => setAbertoMobile(false)}
-              className="absolute right-3 top-3 rounded-lg p-1.5"
-              style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
+              className="sidebar-sair absolute right-3 top-4"
+              aria-label="Fechar menu"
             >
-              <X size={16} />
+              <X size={18} />
             </button>
             {conteudo}
           </div>

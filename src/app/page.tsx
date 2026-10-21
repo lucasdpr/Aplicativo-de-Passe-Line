@@ -82,7 +82,7 @@ export default function Home() {
       <div className="flex min-h-screen flex-col md:flex-row">
         <AppSidebar papel={tecnico?.papel} />
         <div className="min-w-0 flex-1">
-          <StatusBar />
+          <StatusBar comMenu />
           <LembretePrazos />
           <main className="mx-auto w-full max-w-2xl flex-1 p-4">
             <div className="mb-7 mt-2 border-b pb-5" style={{ borderColor: "var(--border)" }}>
