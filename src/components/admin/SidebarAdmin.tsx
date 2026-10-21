@@ -5,17 +5,17 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   AlarmClock,
-  ArrowLeft,
   ClipboardList,
+  Eye,
   History,
   LineChart,
   Menu,
   ShieldCheck,
   Users,
   X,
-  Eye,
 } from "lucide-react";
 import { listarTecnicos } from "@/lib/auth";
+import type { PapelTecnico } from "@/types";
 import { BotaoNotificacoes } from "@/components/BotaoNotificacoes";
 
 interface ItemNav {
@@ -25,16 +25,29 @@ interface ItemNav {
   contador?: number;
 }
 
+interface Grupo {
+  titulo: string;
+  itens: ItemNav[];
+}
+
+const ROTULO_PAPEL: Record<PapelTecnico, string> = {
+  ADMIN: "Administrador",
+  TECNICO: "Técnico",
+  VISUALIZADOR: "Visualizador",
+};
+
 export function SidebarAdmin({
-  ehAdmin,
+  papel,
   nomeTecnico,
 }: {
-  ehAdmin: boolean;
+  papel: PapelTecnico;
   nomeTecnico: string;
 }) {
   const pathname = usePathname();
   const [abertoMobile, setAbertoMobile] = useState(false);
   const [pendentes, setPendentes] = useState(0);
+  const ehAdmin = papel === "ADMIN";
+  const podeMedir = papel !== "VISUALIZADOR";
 
   useEffect(() => {
     if (!ehAdmin) return;
@@ -43,13 +56,30 @@ export function SidebarAdmin({
     });
   }, [ehAdmin]);
 
-  const secoes: ItemNav[] = [
-    { href: "/admin", label: "Prazos de medição", icon: AlarmClock },
-    { href: "/admin/analise", label: "Análise e variação", icon: LineChart },
+  const grupos: Grupo[] = [
+    {
+      titulo: "Acompanhar",
+      itens: [
+        { href: "/admin", label: "Prazos", icon: AlarmClock },
+        { href: "/admin/analise", label: "Análise e variação", icon: LineChart },
+        { href: "/admin/historico", label: "Histórico", icon: History },
+      ],
+    },
     ...(ehAdmin
-      ? [{ href: "/admin/tecnicos", label: "Técnicos", icon: Users, contador: pendentes }]
+      ? [
+          {
+            titulo: "Administração",
+            itens: [
+              {
+                href: "/admin/tecnicos",
+                label: "Técnicos",
+                icon: Users,
+                contador: pendentes,
+              },
+            ],
+          },
+        ]
       : []),
-    { href: "/admin/historico", label: "Histórico completo", icon: History },
   ];
 
   const conteudo = (
@@ -67,18 +97,19 @@ export function SidebarAdmin({
         </div>
         <div className="min-w-0">
           <div className="truncate font-display text-sm font-bold tracking-tight">
-            {ehAdmin ? "Painel Admin" : "Painel de Visualização"}
+            CSN Pass-Line
           </div>
           <div className="truncate text-xs text-[var(--text-faint)]">
-            CSN Pass-Line
+            {ehAdmin ? "Área do administrador" : "Acompanhamento"}
           </div>
         </div>
       </div>
 
-      {ehAdmin && (
-        <div className="px-3 pb-3">
+      {podeMedir && (
+        <div className="px-3 pb-4">
           <Link
             href="/"
+            onClick={() => setAbertoMobile(false)}
             className="flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold"
             style={{ background: "var(--primary)", color: "#04201c" }}
           >
@@ -87,46 +118,54 @@ export function SidebarAdmin({
         </div>
       )}
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3">
-        {secoes.map((s) => {
-          const Icon = s.icon;
-          const ativo = pathname === s.href;
-          return (
-            <Link
-              key={s.href}
-              href={s.href}
-              onClick={() => setAbertoMobile(false)}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition hover:bg-[var(--surface-raised)]"
-              style={
-                ativo
-                  ? { background: "var(--primary-soft)", color: "var(--primary-strong)" }
-                  : { color: "var(--text-dim)" }
-              }
-            >
-              <Icon size={17} className="shrink-0" />
-              <span className="flex-1 truncate">{s.label}</span>
-              {!!s.contador && (
-                <span className="badge badge-warning shrink-0">{s.contador}</span>
-              )}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 space-y-5 overflow-y-auto px-3">
+        {grupos.map((grupo) => (
+          <div key={grupo.titulo}>
+            <div className="mb-1.5 px-3 text-[0.65rem] font-semibold uppercase tracking-[0.15em] text-[var(--text-faint)]">
+              {grupo.titulo}
+            </div>
+            <div className="space-y-1">
+              {grupo.itens.map((s) => {
+                const Icon = s.icon;
+                const ativo = pathname === s.href;
+                return (
+                  <Link
+                    key={s.href}
+                    href={s.href}
+                    onClick={() => setAbertoMobile(false)}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition hover:bg-[var(--surface-raised)]"
+                    style={
+                      ativo
+                        ? { background: "var(--primary-soft)", color: "var(--primary-strong)" }
+                        : { color: "var(--text-dim)" }
+                    }
+                  >
+                    <Icon size={17} className="shrink-0" />
+                    <span className="flex-1 truncate">{s.label}</span>
+                    {!!s.contador && (
+                      <span
+                        className="badge badge-warning shrink-0"
+                        title="Cadastros aguardando aprovação"
+                      >
+                        {s.contador} aguardando
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       <div className="space-y-2 p-3">
         <BotaoNotificacoes />
-        <Link
-          href="/"
-          className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition hover:bg-[var(--surface-raised)]"
-          style={{ color: "var(--text-dim)" }}
-        >
-          <ArrowLeft size={16} /> Voltar ao app
-        </Link>
         <div
-          className="truncate rounded-xl px-3 py-2 text-xs"
+          className="rounded-xl px-3 py-2.5 text-xs leading-relaxed"
           style={{ background: "var(--surface-raised)", color: "var(--text-faint)" }}
         >
-          Logado como <span className="font-medium text-[var(--text-dim)]">{nomeTecnico}</span>
+          <div className="truncate font-medium text-[var(--text-dim)]">{nomeTecnico}</div>
+          <div>{ROTULO_PAPEL[papel]}</div>
         </div>
       </div>
     </div>
@@ -145,17 +184,17 @@ export function SidebarAdmin({
         {conteudo}
       </aside>
 
-      {/* Mobile: botão + drawer */}
-      <div className="flex items-center justify-between p-4 md:hidden">
+      {/* Mobile: menu + atalho para medir */}
+      <div className="flex items-center justify-between gap-2 p-4 md:hidden">
         <button
           onClick={() => setAbertoMobile(true)}
           className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium"
           style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
         >
           <Menu size={16} />
-          {ehAdmin ? "Painel Admin" : "Painel de Visualização"}
+          Menu
         </button>
-        {ehAdmin && (
+        {podeMedir && (
           <Link
             href="/"
             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold"

@@ -9,7 +9,6 @@ import { puxarAtualizacoes } from "@/lib/db/sync";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
-  const ehAdmin = tecnico?.papel === "ADMIN";
   // Técnico e visualizador também podem ver — é tudo leitura (prazos,
   // análise, histórico). Só a gestão de técnicos fica restrita a admin.
   const podeVer = !!tecnico;
@@ -34,7 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <AuthGuard>
       <div className="flex min-h-screen flex-col md:flex-row">
-        <SidebarAdmin ehAdmin={ehAdmin} nomeTecnico={tecnico?.nome ?? ""} />
+        <SidebarAdmin papel={tecnico?.papel ?? "VISUALIZADOR"} nomeTecnico={tecnico?.nome ?? ""} />
         <div className="min-w-0 flex-1">
           <StatusBar />
           <main className="mx-auto w-full max-w-4xl flex-1 space-y-8 p-4 md:p-6">
