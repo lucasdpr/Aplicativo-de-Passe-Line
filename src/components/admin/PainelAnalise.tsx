@@ -354,7 +354,7 @@ export function PainelAnalise() {
 
           <div className="entrar grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]" style={{ animationDelay: "120ms" }}>
             {/* Lista de equipamentos */}
-            <div className="surface flex max-h-[44rem] flex-col overflow-hidden p-0 print:hidden">
+            <div className="surface flex flex-col overflow-hidden p-0 print:hidden lg:max-h-[44rem]">
               <div className="flex flex-wrap gap-1 border-b p-2.5" style={{ borderColor: "var(--border)" }} role="tablist" aria-label="Filtrar por máquina">
                 {(["TODAS", ...maquinas] as const).map((m) => (
                   <button
@@ -373,7 +373,7 @@ export function PainelAnalise() {
                   </button>
                 ))}
               </div>
-              <ul className="flex-1 overflow-y-auto p-1.5">
+              <ul className="flex-1 p-1.5 lg:overflow-y-auto">
                 {listados.map((c) => {
                   const ativo = chaveDe(c) === selecionado;
                   return (
@@ -751,7 +751,7 @@ function Detalhe({
               {tabelaAberta ? "Esconder tabela" : "Ver em tabela"}
             </button>
             {tabelaAberta && (
-              <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border" style={{ borderColor: "var(--border)" }}>
+              <div className="mt-2 overflow-x-auto rounded-lg border md:max-h-64 md:overflow-y-auto" style={{ borderColor: "var(--border)" }}>
                 <table className="w-full text-left text-xs">
                   <thead className="sticky top-0" style={{ background: "var(--surface-raised)" }}>
                     <tr>
