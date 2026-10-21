@@ -14,7 +14,7 @@ export default function PrazosPage() {
       <div className="flex min-h-screen flex-col md:flex-row">
         <AppSidebar papel={tecnico?.papel} />
         <div className="min-w-0 flex-1">
-          <StatusBar />
+          <StatusBar comMenu />
           <main className="mx-auto w-full max-w-2xl flex-1 p-4">
             <p className="mb-4 mt-2 text-xs font-medium uppercase tracking-wide text-[var(--text-faint)]">
               Olá, {tecnico?.nome?.split(" ")[0] ?? "técnico"}
