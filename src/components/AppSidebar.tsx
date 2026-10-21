@@ -19,6 +19,7 @@ import type { PapelTecnico } from "@/types";
 import { listarTecnicos, useAuthStore } from "@/lib/auth";
 import { BotaoNotificacoes } from "@/components/BotaoNotificacoes";
 import { IndicadorConexao } from "@/components/StatusBar";
+import { usePrazosLocais } from "@/lib/usePrazosLocais";
 
 interface ItemNav {
   href: string;
@@ -55,6 +56,7 @@ export function AppSidebar({ papel }: { papel?: PapelTecnico }) {
   const logout = useAuthStore((s) => s.logout);
   const [abertoMobile, setAbertoMobile] = useState(false);
   const [pendentes, setPendentes] = useState(0);
+  const resumo = usePrazosLocais();
   const papelAtual = papel ?? tecnico?.papel ?? "TECNICO";
   const ehAdmin = papelAtual === "ADMIN";
   const podeMedir = papelAtual !== "VISUALIZADOR";
@@ -100,7 +102,7 @@ export function AppSidebar({ papel }: { papel?: PapelTecnico }) {
   const medindo = pathname === "/" || pathname.startsWith("/formularios");
 
   const conteudo = (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full w-full min-w-0 flex-col">
       <Link href="/" className="sidebar-marca" onClick={() => setAbertoMobile(false)}>
         <Image
           src="/icons/logo-mark.png"
@@ -168,6 +170,49 @@ export function AppSidebar({ papel }: { papel?: PapelTecnico }) {
         ))}
       </nav>
 
+      {resumo && resumo.prazos.length > 0 && (
+        <Link
+          href="/prazos"
+          onClick={() => setAbertoMobile(false)}
+          className="mx-3 mb-3 block rounded-xl border p-3 transition hover:border-[var(--border-strong)]"
+          style={{ borderColor: "var(--border)", background: "rgba(255,255,255,0.015)" }}
+          aria-label={`Prazos: ${resumo.atrasados} atrasadas, ${resumo.vencendo} vencendo, ${resumo.emDia} em dia`}
+        >
+          <div className="mb-2 flex items-baseline justify-between">
+            <span className="text-xs font-medium text-[var(--text-dim)]">Situação dos prazos</span>
+            <span className="font-mono text-[0.7rem] text-[var(--text-faint)]">
+              {resumo.prazos.length} fichas
+            </span>
+          </div>
+          <div className="medidor" aria-hidden>
+            {[
+              { n: resumo.atrasados, cor: "var(--danger)" },
+              { n: resumo.vencendo, cor: "var(--warning)" },
+              { n: resumo.emDia, cor: "var(--success)" },
+            ]
+              .filter((x) => x.n > 0)
+              .map((x) => (
+                <span key={x.cor} style={{ flexGrow: x.n, background: x.cor }} />
+              ))}
+          </div>
+          <div className="mt-2.5 grid grid-cols-3 gap-1 text-[0.7rem]">
+            {[
+              { n: resumo.atrasados, rotulo: "atrasadas", estado: "atrasado" },
+              { n: resumo.vencendo, rotulo: "vencendo", estado: "vencendo" },
+              { n: resumo.emDia, rotulo: "em dia", estado: "em_dia" },
+            ].map((x) => (
+              <span key={x.estado} className="flex flex-col gap-0.5">
+                <span className="flex items-center gap-1.5 font-mono text-sm font-semibold text-[var(--text)]">
+                  <span className="ponto-estado" data-estado={x.estado} />
+                  {x.n}
+                </span>
+                <span className="text-[var(--text-faint)]">{x.rotulo}</span>
+              </span>
+            ))}
+          </div>
+        </Link>
+      )}
+
       <div className="space-y-2 border-t p-3" style={{ borderColor: "var(--border)" }}>
         <BotaoNotificacoes />
         {tecnico && (
@@ -201,7 +246,7 @@ export function AppSidebar({ papel }: { papel?: PapelTecnico }) {
   return (
     <>
       <aside
-        className="sticky top-0 hidden h-dvh w-64 shrink-0 md:flex"
+        className="sticky top-0 hidden h-dvh w-64 shrink-0 overflow-hidden md:flex"
         style={{ borderRight: "1px solid var(--border)", background: "var(--surface)" }}
       >
         {conteudo}
