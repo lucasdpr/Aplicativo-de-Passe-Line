@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { conferirSessaoServidor, useAuthStore } from "@/lib/auth";
+import { useSinalDePresenca } from "@/lib/presenca";
 
 export function AuthGuard({
   children,
@@ -16,6 +17,7 @@ export function AuthGuard({
   const hidratado = useAuthStore((s) => s.hidratado);
   const router = useRouter();
   const semAcesso = bloquearVisualizador && tecnico?.papel === "VISUALIZADOR";
+  useSinalDePresenca(hidratado && !!tecnico);
 
   // Com internet, confere se a sessão do servidor bate com quem está logado
   // aqui (o login offline só existe no aparelho). Se não bater, pede pra
