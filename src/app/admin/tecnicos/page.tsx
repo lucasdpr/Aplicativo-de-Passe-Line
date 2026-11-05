@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Trash2, Users, UserCheck } from "lucide-react";
+import { KeyRound, Trash2, Users, UserCheck, Radio } from "lucide-react";
 import {
   useAuthStore,
   resetarPin,
@@ -11,6 +11,7 @@ import {
   listarTecnicos,
   aprovarTecnico,
 } from "@/lib/auth";
+import { dataHora, estaOnline, haQuantoTempo, usePresencas } from "@/lib/presenca";
 import type { PapelTecnico, Tecnico } from "@/types";
 
 const NOME_PAPEL: Record<PapelTecnico, string> = {
@@ -26,6 +27,7 @@ export default function AdminTecnicosPage() {
 
   const [tecnicos, setTecnicos] = useState<Omit<Tecnico, "pin">[] | null>(null);
   const [resetandoId, setResetandoId] = useState<string | null>(null);
+  const { presencas, agora } = usePresencas(ehAdmin);
 
   const recarregarTecnicos = useCallback(() => {
     listarTecnicos().then(setTecnicos);
@@ -101,7 +103,14 @@ export default function AdminTecnicosPage() {
   }
 
   const pendentes = tecnicos?.filter((t) => !t.aprovado) ?? [];
-  const aprovados = tecnicos?.filter((t) => t.aprovado) ?? [];
+  const aprovados = (tecnicos?.filter((t) => t.aprovado) ?? []).sort(
+    // Quem está online primeiro; depois quem entrou mais recentemente.
+    (a, b) =>
+      Number(estaOnline(presencas?.get(b.id), agora)) - Number(estaOnline(presencas?.get(a.id), agora)) ||
+      new Date(presencas?.get(b.id)?.vistoEm ?? 0).getTime() -
+        new Date(presencas?.get(a.id)?.vistoEm ?? 0).getTime()
+  );
+  const onlineAgora = aprovados.filter((t) => estaOnline(presencas?.get(t.id), agora));
 
   return (
     <>
@@ -149,6 +158,32 @@ export default function AdminTecnicosPage() {
         </section>
       )}
 
+      {ehAdmin && presencas && (
+        <section aria-label="Quem está online">
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--text-dim)]">
+            <Radio size={15} /> Online agora ({onlineAgora.length})
+          </h2>
+          <div className="surface p-3 text-sm">
+            {onlineAgora.length === 0 ? (
+              <span className="text-[var(--text-faint)]">Ninguém com o app aberto neste momento.</span>
+            ) : (
+              <ul className="flex flex-wrap gap-x-5 gap-y-1.5">
+                {onlineAgora.map((t) => (
+                  <li key={t.id} className="flex items-center gap-2">
+                    <span className="ponto-estado" data-estado="em_dia" aria-hidden />
+                    {t.nome}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-[var(--text-faint)]">
+              Conta quem está com o app aberto e com internet. Quem está sem sinal (offline) não aparece,
+              mesmo que esteja medindo.
+            </p>
+          </div>
+        </section>
+      )}
+
       <section>
         <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--text-dim)]">
           <Users size={15} /> Técnicos cadastrados ({aprovados.length})
@@ -169,6 +204,7 @@ export default function AdminTecnicosPage() {
                   Matr. {t.matricula} · {t.funcao} · cadastrado em{" "}
                   {new Date(t.criadoEm).toLocaleDateString("pt-BR")}
                 </div>
+                {ehAdmin && presencas && <LinhaPresenca p={presencas.get(t.id)} agora={agora} />}
               </div>
               {ehAdmin && (
                 <div className="flex flex-wrap items-center gap-2">
@@ -215,5 +251,27 @@ export default function AdminTecnicosPage() {
         </div>
       </section>
     </>
+  );
+}
+
+function LinhaPresenca({ p, agora }: { p?: import("@/lib/presenca").Presenca; agora: number }) {
+  if (!p) {
+    return (
+      <div className="mt-1 flex items-center gap-1.5 text-xs text-[var(--text-faint)]">
+        <span className="ponto-estado" aria-hidden /> Nunca usou o app depois desta atualização
+      </div>
+    );
+  }
+  const online = estaOnline(p, agora);
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+      <span className="flex items-center gap-1.5" style={{ color: online ? "var(--success)" : "var(--text-dim)" }}>
+        <span className="ponto-estado" data-estado={online ? "em_dia" : undefined} aria-hidden />
+        {online ? "Online agora" : `Visto ${haQuantoTempo(p.vistoEm, agora)}`}
+      </span>
+      {p.ultimoLoginEm && (
+        <span className="text-[var(--text-faint)]">Último login: {dataHora(p.ultimoLoginEm)}</span>
+      )}
+    </div>
   );
 }

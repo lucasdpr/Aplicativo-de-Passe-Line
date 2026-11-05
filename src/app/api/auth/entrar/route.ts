@@ -133,5 +133,12 @@ export async function POST(req: NextRequest) {
     await admin.from("tecnicos").update(atualizacoes).eq("id", tecnico.id);
   }
 
+  const agora = new Date().toISOString();
+  // Não pode derrubar o login se o registro de presença falhar.
+  await admin
+    .from("presenca")
+    .upsert({ tecnico_id: tecnico.id, ultimo_login_em: agora, visto_em: agora })
+    .then(() => {}, () => {});
+
   return gravarSessao(NextResponse.json({ tecnico: semPin(tecnico) }), tecnico.id);
 }

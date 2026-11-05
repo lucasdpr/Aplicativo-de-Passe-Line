@@ -39,6 +39,13 @@ create table if not exists login_tentativas (
   atualizado_em timestamptz not null default now()
 );
 
+-- Presença: último login e último sinal de cada técnico (só o servidor lê/grava).
+create table if not exists presenca (
+  tecnico_id uuid primary key references tecnicos(id) on delete cascade,
+  ultimo_login_em timestamptz,
+  visto_em timestamptz not null default now()
+);
+
 -- Medições --------------------------------------------------------------
 
 create table if not exists sessoes_medicao (
@@ -147,6 +154,7 @@ create table if not exists prazos_notificados (
 
 alter table tecnicos enable row level security;
 alter table login_tentativas enable row level security;
+alter table presenca enable row level security;
 alter table sessoes_medicao enable row level security;
 alter table linhas_pass_line_desempenadeira enable row level security;
 alter table linhas_gap enable row level security;
