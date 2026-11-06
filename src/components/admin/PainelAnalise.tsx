@@ -575,11 +575,15 @@ function Detalhe({
   const posicoes = [...c.detalhePorNCad].sort((a, b) => a.nCad - b.nCad).map((d) => ({
     pos: c.tipoFicha === "PASS_LINE_SEGMENTOS" && d.nCad === 0 ? "B" : String(d.nCad),
     valor: Number(d.ultimoValor.toFixed(3)),
-    fora: tol !== null && Math.abs(d.ultimoValor) > tol + 1e-9,
+    // GAP: a situação já vem decidida (regra do centro); nas outras fichas, é o limite.
+    fora: d.ultimoEstado ? d.ultimoEstado === "FORA" : tol !== null && Math.abs(d.ultimoValor) > tol + 1e-9,
+    // Centro fora com as duas pontas boas: cadeira OK, mas o desgaste do meio fica à vista.
+    soCentro: d.ultimoEstado === "CENTRO_FORA",
     pior: d.piorValor,
     piorData: d.piorData,
   }));
   const qtdForaPos = posicoes.filter((p) => p.fora).length;
+  const qtdSoCentro = posicoes.filter((p) => p.soCentro).length;
   const corVariacao = piorando === true ? "#fca5a5" : piorando === false ? "#4ade80" : "var(--text)";
 
   return (
@@ -704,6 +708,11 @@ function Detalhe({
                 {tol !== null && (
                   <>
                     {" "}· <span style={{ color: qtdForaPos ? "#fca5a5" : "#4ade80" }}>{qtdForaPos} fora</span> de {posicoes.length}
+                    {qtdSoCentro > 0 && (
+                      <>
+                        {" "}· <span style={{ color: "#fbbf24" }}>{qtdSoCentro} só no centro</span>
+                      </>
+                    )}
                   </>
                 )}
               </span>
@@ -728,20 +737,35 @@ function Detalhe({
                       cursor={{ fill: "rgba(255,255,255,0.04)" }}
                       labelFormatter={(l) => `${rotuloPosicao(c.tipoFicha)} ${l}`}
                       formatter={(v, _n, item) => {
-                        const p = item?.payload as { fora?: boolean };
-                        return [`${Number(v).toFixed(3).replace(".", ",")} mm · ${p?.fora ? "fora" : "dentro"}`, "Desvio"];
+                        const p = item?.payload as { fora?: boolean; soCentro?: boolean };
+                        const situacao = p?.fora ? "fora" : p?.soCentro ? "só o centro fora, pontas OK" : "dentro";
+                        return [`${Number(v).toFixed(3).replace(".", ",")} mm · ${situacao}`, "Desvio"];
                       }}
                     />
                     {tol !== null && <ReferenceLine y={tol} stroke="#fca5a5" strokeDasharray="5 4" />}
                     <Bar dataKey="valor" radius={[3, 3, 0, 0]}>
                       {posicoes.map((p) => (
-                        <Cell key={p.pos} fill={p.fora ? "#f87171" : "var(--primary-strong)"} fillOpacity={p.fora ? 0.95 : 0.55} />
+                        <Cell
+                          key={p.pos}
+                          fill={p.fora ? "#f87171" : p.soCentro ? "#fbbf24" : "var(--primary-strong)"}
+                          fillOpacity={p.fora ? 0.95 : p.soCentro ? 0.9 : 0.55}
+                        />
                       ))}
                     </Bar>
                   </BarChart>
                 )}
               </ResponsiveContainer>
             </div>
+            {qtdSoCentro > 0 && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-[var(--text-dim)]">
+                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: "#fbbf24" }} aria-hidden />
+                <span>
+                  <strong className="font-medium text-[var(--text)]">Amarelo:</strong> só o centro está fora e as duas
+                  pontas estão dentro. A cadeira conta como OK (regra do supervisor), mas o desgaste do meio continua
+                  aparecendo aqui.
+                </span>
+              </p>
+            )}
             <button
               onClick={alternarTabela}
               className="mt-2 flex items-center gap-1 text-xs font-medium text-[var(--text-dim)] hover:text-[var(--text)]"
@@ -764,8 +788,12 @@ function Detalhe({
                     {posicoes.map((p) => (
                       <tr key={p.pos} className="border-t" style={{ borderColor: "var(--border)" }}>
                         <td className="p-2 font-mono font-medium">{p.pos}</td>
-                        <td className="p-2 font-mono" style={{ color: p.fora ? "#fca5a5" : "var(--text-dim)" }}>
+                        <td
+                          className="p-2 font-mono"
+                          style={{ color: p.fora ? "#fca5a5" : p.soCentro ? "#fbbf24" : "var(--text-dim)" }}
+                        >
                           {p.valor.toFixed(3).replace(".", ",")} mm {p.fora && "· fora"}
+                          {p.soCentro && "· só o centro (OK)"}
                         </td>
                         <td className="p-2 font-mono text-[var(--text-faint)]">
                           {p.pior.toFixed(3).replace(".", ",")} mm · {formatarData(p.piorData)}

@@ -66,6 +66,12 @@ export interface DetalheNCad {
   ultimaData: string;
   piorValor: number;
   piorData: string;
+  /**
+   * Só no GAP da MCC2/MCC3: situação da cadeira na última medição.
+   * CENTRO_FORA = centro fora com as duas pontas boas (cadeira OK, mas o
+   * desgaste do meio continua à vista).
+   */
+  ultimoEstado?: "OK" | "FORA" | "CENTRO_FORA";
 }
 
 export interface AnaliseCombo extends Combo {
@@ -125,6 +131,7 @@ interface AgregadoNCad {
   ultimaData: string;
   piorValor: number;
   piorData: string;
+  ultimoEstado?: DetalheNCad["ultimoEstado"];
 }
 
 interface AgregadoCombo {
@@ -174,6 +181,41 @@ function atualizarNCad(
   const critico = piorEhMenor ? valor < atual.piorValor : valor > atual.piorValor;
   if (critico) {
     atual.piorValor = valor;
+    atual.piorData = data;
+  }
+}
+
+/**
+ * GAP: o valor da cadeira é o maior desvio da medida atual (2ª quando existe,
+ * senão a 1ª) — não o último campo digitado — e a situação segue a regra do
+ * centro. O "pior" olha todos os valores já medidos.
+ */
+function atualizarNCadGap(
+  agregado: AgregadoCombo,
+  nCad: number,
+  desvioAtual: number,
+  estado: DetalheNCad["ultimoEstado"],
+  piorDesvio: number,
+  data: string
+) {
+  const atual = agregado.porNCad.get(nCad);
+  if (!atual) {
+    agregado.porNCad.set(nCad, {
+      ultimoValor: desvioAtual,
+      ultimaData: data,
+      piorValor: piorDesvio,
+      piorData: data,
+      ultimoEstado: estado,
+    });
+    return;
+  }
+  if (data >= atual.ultimaData) {
+    atual.ultimoValor = desvioAtual;
+    atual.ultimaData = data;
+    atual.ultimoEstado = estado;
+  }
+  if (piorDesvio > atual.piorValor) {
+    atual.piorValor = piorDesvio;
     atual.piorData = data;
   }
 }
@@ -338,18 +380,35 @@ export async function buscarAnaliseCombos(
       };
       return { m, ...classificarMedicaoGap(m, nominal, tolerancia) };
     };
-    // Centro fora com as duas pontas boas é cadeira boa (regra do GAP): esse
-    // valor não entra na análise, senão a cadeira apareceria como problema.
-    const medidos = [rodada("primeira"), rodada("segunda")].flatMap(({ m, valores }) =>
-      (["acionado", "centro", "naoAcionado"] as const)
-        .filter((k) => m[k] !== undefined && valores[k] !== "CENTRO_TOLERADO")
-        .map((k) => Math.abs((m[k] as number) - nominal))
+    const posicoes = ["acionado", "centro", "naoAcionado"] as const;
+    const rodadas = [rodada("primeira"), rodada("segunda")];
+    // Todos os valores medidos entram nas médias e no pior ponto (o desgaste
+    // do centro não pode sumir); só a contagem de "fora" segue a regra do centro.
+    const medidos = rodadas.flatMap(({ m }) =>
+      posicoes.filter((k) => m[k] !== undefined).map((k) => Math.abs((m[k] as number) - nominal))
     );
     if (medidos.length === 0) continue;
     for (const valor of medidos) {
       atualizarPior(comboAgregado, { nCad, valor, data: sessao.data }, false);
-      atualizarNCad(comboAgregado, nCad, valor, sessao.data, false);
     }
+    const [r1, r2] = rodadas;
+    const atualMedida = {
+      acionado: r2.m.acionado ?? r1.m.acionado,
+      centro: r2.m.centro ?? r1.m.centro,
+      naoAcionado: r2.m.naoAcionado ?? r1.m.naoAcionado,
+    };
+    const desviosAtuais = posicoes
+      .filter((k) => atualMedida[k] !== undefined)
+      .map((k) => Math.abs((atualMedida[k] as number) - nominal));
+    const situacaoAtual = classificarMedicaoGap(atualMedida, nominal, tolerancia).situacao;
+    atualizarNCadGap(
+      comboAgregado,
+      nCad,
+      Math.max(...desviosAtuais),
+      situacaoAtual,
+      Math.max(...medidos),
+      sessao.data
+    );
     if (Number.isFinite(tolerancia)) {
       comboAgregado.somaTolerancia += tolerancia;
       comboAgregado.contagemTolerancia += 1;
@@ -359,7 +418,11 @@ export async function buscarAnaliseCombos(
     const novoTotal = atual.total + medidos.length;
     const novaSoma = somaAnterior + medidos.reduce((a, b) => a + b, 0);
     // Folga pra erro de ponto flutuante (260,2 - 260,5 dá 0,30000000000001).
-    const foraAqui = medidos.filter((v) => v > tolerancia + 1e-9).length;
+    // Centro fora com as duas pontas boas não conta como fora (regra do GAP).
+    const foraAqui = rodadas.reduce(
+      (soma, { valores }) => soma + posicoes.filter((k) => valores[k] === "FORA").length,
+      0
+    );
     agregadoPorSessao.set(sessaoId, {
       valor: novaSoma / novoTotal,
       fora: atual.fora + foraAqui,
@@ -608,6 +671,7 @@ export async function buscarAnaliseCombos(
         ultimaData: d.ultimaData,
         piorValor: d.piorValor,
         piorData: d.piorData,
+        ...(d.ultimoEstado ? { ultimoEstado: d.ultimoEstado } : {}),
       }))
       .sort((a, b) => a.nCad - b.nCad);
 
