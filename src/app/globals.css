@@ -170,6 +170,13 @@ body::after {
   color: #fca5a5;
 }
 
+/* Centro fora com as duas pontas boas: não reprova a cadeira, mas continua à vista. */
+.input-cell.input-centro-tolerado {
+  background: var(--warning-soft) !important;
+  border-color: var(--warning) !important;
+  color: var(--warning);
+}
+
 .btn-primary {
   display: inline-flex;
   align-items: center;

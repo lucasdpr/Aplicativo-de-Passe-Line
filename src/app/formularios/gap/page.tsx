@@ -16,7 +16,16 @@ import { db } from "@/lib/db/dexie";
 import { sincronizarPendentes, houveConflitoDeEdicao } from "@/lib/db/sync";
 import { diffObjetos, diffLinhas, registrarEdicao } from "@/lib/db/edicoes";
 import { useAuthStore } from "@/lib/auth";
-import { N_CAD_RANGE_GAP, type LinhaGap, type SessaoMedicao } from "@/types";
+import {
+  N_CAD_RANGE_GAP,
+  classificarMedicaoGap,
+  primeiraMedicaoGap,
+  segundaMedicaoGap,
+  type EstadoValorGap,
+  type LinhaGap,
+  type PosicaoGap,
+  type SessaoMedicao,
+} from "@/types";
 import {
   agruparCampos,
   clamparNumero,
@@ -178,26 +187,33 @@ function lerTolerancia(texto: string, atual: number | undefined): number | undef
   return Number(digito) / 10;
 }
 
-function foraDaTolerancia(
-  campo: string,
-  valor: number | undefined,
-  gapNominal: number,
-  tolerancia: number
-) {
-  if (valor === undefined || Number.isNaN(valor)) return false;
-  if (campo.toLowerCase().includes("ajuste")) return false; // ajuste é texto, não medida
-  // Folga pra erro de ponto flutuante (260,2 - 260,5 dá 0,30000000000001).
-  return Math.abs(valor - gapNominal) > tolerancia + 1e-9;
+const RODADA_E_POSICAO: Partial<Record<keyof LinhaGap, ["primeira" | "segunda", PosicaoGap]>> = {
+  primeiraAcionado: ["primeira", "acionado"],
+  primeiraCentro: ["primeira", "centro"],
+  primeiraNaoAcionado: ["primeira", "naoAcionado"],
+  segundaAcionado: ["segunda", "acionado"],
+  segundaCentro: ["segunda", "centro"],
+  segundaNaoAcionado: ["segunda", "naoAcionado"],
+};
+
+/** FORA (vermelho), CENTRO_TOLERADO (amarelo: centro fora, mas as duas pontas estão boas) ou OK. */
+function estadoDoCampo(l: LinhaGap, campo: keyof LinhaGap): EstadoValorGap | undefined {
+  const rp = RODADA_E_POSICAO[campo];
+  if (!rp) return undefined;
+  const medicao = rp[0] === "primeira" ? primeiraMedicaoGap(l) : segundaMedicaoGap(l);
+  return classificarMedicaoGap(medicao, l.gapNominal, l.toleranciaMm).valores[rp[1]];
 }
 
+/**
+ * 1ª medição completa e sem ponta fora: não precisa de ajuste nem de 2ª
+ * medição. Centro fora com as duas pontas boas também vale (regra do GAP).
+ */
 function primeiraMedidaDentroDaTolerancia(l: LinhaGap) {
-  return CAMPOS_PRIMEIRA.every((campo) => {
-    const v = l[campo];
-    return (
-      typeof v === "number" &&
-      !foraDaTolerancia(campo, v, l.gapNominal, l.toleranciaMm)
-    );
-  });
+  const completa = CAMPOS_PRIMEIRA.every((campo) => typeof l[campo] === "number");
+  return (
+    completa &&
+    classificarMedicaoGap(primeiraMedicaoGap(l), l.gapNominal, l.toleranciaMm).situacao !== "FORA"
+  );
 }
 
 function headerDeSessao(s: SessaoMedicao): SessaoHeaderValue {
@@ -349,8 +365,9 @@ function GapForm() {
   }
 
   /**
-   * Se as 3 medidas da 1ª medição estão dentro da tolerância, não precisa de
-   * ajuste nem de 2ª medição — pula direto pra cadeira de baixo.
+   * Se as duas pontas da 1ª medição estão dentro da tolerância, não precisa de
+   * ajuste nem de 2ª medição (o centro fora não reprova) — pula direto pra
+   * cadeira de baixo.
    */
   function pularSeNaoPrecisaAjuste(linha: LinhaGap): boolean {
     if (!primeiraMedidaDentroDaTolerancia(linha)) return false;
@@ -580,6 +597,9 @@ function GapForm() {
         ajustar, ou anote o que foi feito. Não é campo de número. Se as 3 medidas
         da <strong>1ª medição</strong> ficarem dentro da tolerância, o cursor pula
         sozinho pra cadeira de baixo e o ajuste é preenchido com <strong>OK</strong>.
+        O mesmo vale se só o <strong>Centro</strong> ficar fora e as duas pontas
+        (Acionado e Não Acionado) estiverem dentro: a cadeira está OK, o Centro
+        fica em amarelo e não precisa de 2ª medição.
       </p>
 
       <div className="surface scrollbar-thin max-h-[60vh] overflow-auto">
@@ -631,14 +651,9 @@ function GapForm() {
                   g.campos.map((c, i) => {
                     const ehTexto = CAMPOS_TEXTO.has(c.key);
                     const valor = l[c.key] as string | number | undefined;
-                    const fora = ehTexto
-                      ? false
-                      : foraDaTolerancia(
-                          c.key,
-                          valor as number | undefined,
-                          l.gapNominal,
-                          l.toleranciaMm
-                        );
+                    const estado = ehTexto ? undefined : estadoDoCampo(l, c.key);
+                    const fora = estado === "FORA";
+                    const centroTolerado = estado === "CENTRO_TOLERADO";
                     return (
                       <td key={c.key} style={estiloColuna(g.indice, i === 0)}>
                         <input
@@ -647,7 +662,12 @@ function GapForm() {
                           enterKeyHint="next"
                           data-celula={chaveCelula(l.nCad, c.key)}
                           placeholder="—"
-                          className={`input-cell ${fora ? "input-fora-tolerancia" : ""}`}
+                          className={`input-cell ${fora ? "input-fora-tolerancia" : ""} ${centroTolerado ? "input-centro-tolerado" : ""}`}
+                          title={
+                            centroTolerado
+                              ? "Centro fora, mas as duas pontas estão dentro: cadeira OK, sem 2ª medição."
+                              : undefined
+                          }
                           value={
                             ehTexto
                               ? (valor as string | undefined) ?? ""

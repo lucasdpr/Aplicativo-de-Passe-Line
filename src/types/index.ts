@@ -89,6 +89,88 @@ export interface LinhaGap {
   segundaNaoAcionado?: number;
 }
 
+/** Uma rodada de medição de uma cadeira (1ª ou 2ª): acionado, centro e não acionado. */
+export interface MedicaoGap {
+  acionado?: number | null;
+  centro?: number | null;
+  naoAcionado?: number | null;
+}
+
+export type PosicaoGap = keyof MedicaoGap;
+export type EstadoValorGap = "OK" | "FORA" | "CENTRO_TOLERADO";
+export type SituacaoMedicaoGap = "OK" | "CENTRO_FORA" | "FORA";
+
+const tem = (v: number | null | undefined): v is number =>
+  v !== null && v !== undefined && !Number.isNaN(v);
+
+/**
+ * Regra do GAP da MCC2/MCC3 (pedida pelo supervisor): se as duas pontas
+ * (acionado e não acionado) estão dentro da tolerância, o centro fora NÃO
+ * reprova a cadeira — ela fica "boa" e não precisa de 2ª medição. Ponta fora
+ * continua fora, e o centro só é perdoado quando as duas pontas foram medidas.
+ *
+ * Devolve a situação da rodada e o estado de cada valor (pra pintar a célula:
+ * FORA = vermelho, CENTRO_TOLERADO = amarelo). undefined = nada medido.
+ */
+export function classificarMedicaoGap(
+  m: MedicaoGap,
+  nominal: number,
+  tolerancia: number | null | undefined
+): {
+  situacao: SituacaoMedicaoGap | undefined;
+  valores: Record<PosicaoGap, EstadoValorGap | undefined>;
+} {
+  const vazio = { acionado: undefined, centro: undefined, naoAcionado: undefined };
+  if (!tem(nominal) || !tem(tolerancia)) {
+    // Sem regra de tolerância, nada é "fora".
+    const valores = { ...vazio } as Record<PosicaoGap, EstadoValorGap | undefined>;
+    let algum = false;
+    for (const k of ["acionado", "centro", "naoAcionado"] as const) {
+      if (tem(m[k])) {
+        valores[k] = "OK";
+        algum = true;
+      }
+    }
+    return { situacao: algum ? "OK" : undefined, valores };
+  }
+  // Folga pra erro de ponto flutuante (260,5 - 260,0 = 0,5000001).
+  const fora = (v: number) => Math.abs(v - nominal) > tolerancia + 1e-9;
+  const pontasMedidasEBoas =
+    tem(m.acionado) && tem(m.naoAcionado) && !fora(m.acionado) && !fora(m.naoAcionado);
+
+  const valores = { ...vazio } as Record<PosicaoGap, EstadoValorGap | undefined>;
+  for (const k of ["acionado", "centro", "naoAcionado"] as const) {
+    const v = m[k];
+    if (!tem(v)) continue;
+    valores[k] = !fora(v) ? "OK" : k === "centro" && pontasMedidasEBoas ? "CENTRO_TOLERADO" : "FORA";
+  }
+  const estados = Object.values(valores).filter((e) => e !== undefined);
+  if (estados.length === 0) return { situacao: undefined, valores };
+  const situacao = estados.includes("FORA")
+    ? "FORA"
+    : estados.includes("CENTRO_TOLERADO")
+      ? "CENTRO_FORA"
+      : "OK";
+  return { situacao, valores };
+}
+
+export function primeiraMedicaoGap(l: LinhaGap): MedicaoGap {
+  return { acionado: l.primeiraAcionado, centro: l.primeiraCentro, naoAcionado: l.primeiraNaoAcionado };
+}
+
+export function segundaMedicaoGap(l: LinhaGap): MedicaoGap {
+  return { acionado: l.segundaAcionado, centro: l.segundaCentro, naoAcionado: l.segundaNaoAcionado };
+}
+
+/** Por posição, vale a 2ª medição (depois do ajuste) quando existe; senão a 1ª. */
+export function medicaoAtualGap(l: LinhaGap): MedicaoGap {
+  return {
+    acionado: l.segundaAcionado ?? l.primeiraAcionado,
+    centro: l.segundaCentro ?? l.primeiraCentro,
+    naoAcionado: l.segundaNaoAcionado ?? l.primeiraNaoAcionado,
+  };
+}
+
 // --- Form 3: Empeno e Desgaste ---
 export interface LinhaEmpenoDesgaste {
   nCad: number;

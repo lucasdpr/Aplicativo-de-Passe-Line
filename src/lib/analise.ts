@@ -4,6 +4,7 @@ import { hojeIso } from "@/lib/datas";
 import {
   GAP_MCC4,
   TOLERANCIAS,
+  classificarMedicaoGap,
   type Maquina,
   type TipoFicha,
   type Veio,
@@ -328,16 +329,22 @@ export async function buscarAnaliseCombos(
     const nominal = Number(linha.gap_nominal);
     const tolerancia = Number(linha.tolerancia_mm);
     const comboAgregado = comboDaSessao(sessao);
-    const medidos = [
-      linha.primeira_acionado,
-      linha.primeira_centro,
-      linha.primeira_nao_acionado,
-      linha.segunda_acionado,
-      linha.segunda_centro,
-      linha.segunda_nao_acionado,
-    ]
-      .filter((v) => v !== null && v !== undefined)
-      .map((v) => Math.abs(Number(v) - nominal));
+    const numero = (v: unknown) => (v === null || v === undefined ? undefined : Number(v));
+    const rodada = (prefixo: "primeira" | "segunda") => {
+      const m = {
+        acionado: numero(linha[`${prefixo}_acionado`]),
+        centro: numero(linha[`${prefixo}_centro`]),
+        naoAcionado: numero(linha[`${prefixo}_nao_acionado`]),
+      };
+      return { m, ...classificarMedicaoGap(m, nominal, tolerancia) };
+    };
+    // Centro fora com as duas pontas boas é cadeira boa (regra do GAP): esse
+    // valor não entra na análise, senão a cadeira apareceria como problema.
+    const medidos = [rodada("primeira"), rodada("segunda")].flatMap(({ m, valores }) =>
+      (["acionado", "centro", "naoAcionado"] as const)
+        .filter((k) => m[k] !== undefined && valores[k] !== "CENTRO_TOLERADO")
+        .map((k) => Math.abs((m[k] as number) - nominal))
+    );
     if (medidos.length === 0) continue;
     for (const valor of medidos) {
       atualizarPior(comboAgregado, { nCad, valor, data: sessao.data }, false);
