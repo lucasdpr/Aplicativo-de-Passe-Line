@@ -5,6 +5,7 @@ import {
   GAP_MCC4,
   TOLERANCIAS,
   classificarMedicaoGap,
+  situacaoGapMcc4,
   type Maquina,
   type TipoFicha,
   type Veio,
@@ -71,7 +72,7 @@ export interface DetalheNCad {
    * CENTRO_FORA = centro fora com as duas pontas boas (cadeira OK, mas o
    * desgaste do meio continua à vista).
    */
-  ultimoEstado?: "OK" | "FORA" | "CENTRO_FORA";
+  ultimoEstado?: "OK" | "FORA" | "CENTRO_FORA" | "AJUSTADO";
 }
 
 export interface AnaliseCombo extends Combo {
@@ -96,6 +97,12 @@ export interface AnaliseCombo extends Combo {
   piorPonto: PontoExtremo | null;
   /** true quando a última medição já está fora da tolerância agora. */
   foraToleranciaAgora: boolean;
+  /**
+   * Pior valor que conta na última medição, como ficou (GAP: 2ª medição quando
+   * existe, sem o centro tolerado; GAP MCC4: sem os pontos com calço). É ele
+   * que diz quanto da tolerância já foi usado — a média esconde a cadeira ruim.
+   */
+  piorAgora: { nCad: number; valor: number } | null;
   /** Limite de tolerância usado nesse combo (mm), ou null se a ficha não tem regra. */
   toleranciaMm: number | null;
   /** Classificação simples da tendência, considerando o ritmo por medição. */
@@ -141,6 +148,7 @@ interface AgregadoCombo {
   pior: PontoExtremo | null;
   ultimaDataVista: string | null;
   foraToleranciaAgora: boolean;
+  piorAgora: { nCad: number; valor: number } | null;
   /** Soma e contagem pra calcular a tolerância média usada (GAP varia por linha). */
   somaTolerancia: number;
   contagemTolerancia: number;
@@ -155,6 +163,7 @@ function novoAgregado(): AgregadoCombo {
     pior: null,
     ultimaDataVista: null,
     foraToleranciaAgora: false,
+    piorAgora: null,
     somaTolerancia: 0,
     contagemTolerancia: 0,
     porNCad: new Map(),
@@ -218,6 +227,30 @@ function atualizarNCadGap(
     atual.piorValor = piorDesvio;
     atual.piorData = data;
   }
+}
+
+/** Com menos medições que isso, não dá pra separar tendência de ruído. */
+export const MEDICOES_MINIMAS_TENDENCIA = 3;
+/** Mudança total (na reta) abaixo disso é estável: é da ordem da leitura. */
+export const VARIACAO_MINIMA_TENDENCIA_MM = 0.05;
+
+/**
+ * Ritmo por medição = inclinação da reta de mínimos quadrados pelos valores,
+ * na ordem das medições. Usa todas elas, então uma leitura fora da curva no
+ * fim pesa bem menos que na conta "última − primeira".
+ */
+function ritmoPorMedicao(valores: number[]): number | null {
+  const n = valores.length;
+  if (n < 2) return null;
+  const mediaX = (n - 1) / 2;
+  const mediaY = valores.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let den = 0;
+  valores.forEach((y, x) => {
+    num += (x - mediaX) * (y - mediaY);
+    den += (x - mediaX) ** 2;
+  });
+  return den === 0 ? null : num / den;
 }
 
 /** Tolerância fixa por tipo de ficha (mm). GAP tem tolerância própria por linha (ver abaixo). */
@@ -325,6 +358,12 @@ export async function buscarAnaliseCombos(
     { valor: number | null; fora: number; total: number }
   >();
   const porCombo = new Map<string, AgregadoCombo>();
+  // Pior valor que conta (como ficou) em cada sessão.
+  const piorPorSessao = new Map<string, { nCad: number; valor: number }>();
+  function marcarPior(sessaoId: string, nCad: number, valor: number) {
+    const atual = piorPorSessao.get(sessaoId);
+    if (!atual || valor > atual.valor) piorPorSessao.set(sessaoId, { nCad, valor });
+  }
 
   function comboDaSessao(sessao: SessaoLeve) {
     const chave = `${sessao.tipoFicha}|${sessao.maquina}|${sessao.veio}`;
@@ -350,6 +389,7 @@ export async function buscarAnaliseCombos(
     for (const v of valores) {
       atualizarPior(comboAgregado, { nCad, valor: v.valor, data: sessao.data }, false);
       atualizarNCad(comboAgregado, nCad, v.valor, sessao.data, false);
+      marcarPior(sessaoId, nCad, v.valor);
     }
     const atual = agregadoPorSessao.get(sessaoId) ?? { valor: null, fora: 0, total: 0 };
     const somaAnterior = (atual.valor ?? 0) * atual.total;
@@ -382,8 +422,7 @@ export async function buscarAnaliseCombos(
     };
     const posicoes = ["acionado", "centro", "naoAcionado"] as const;
     const rodadas = [rodada("primeira"), rodada("segunda")];
-    // Todos os valores medidos entram nas médias e no pior ponto (o desgaste
-    // do centro não pode sumir); só a contagem de "fora" segue a regra do centro.
+    // Pior ponto histórico olha tudo que foi medido (o desgaste do centro não some).
     const medidos = rodadas.flatMap(({ m }) =>
       posicoes.filter((k) => m[k] !== undefined).map((k) => Math.abs((m[k] as number) - nominal))
     );
@@ -400,7 +439,19 @@ export async function buscarAnaliseCombos(
     const desviosAtuais = posicoes
       .filter((k) => atualMedida[k] !== undefined)
       .map((k) => Math.abs((atualMedida[k] as number) - nominal));
-    const situacaoAtual = classificarMedicaoGap(atualMedida, nominal, tolerancia).situacao;
+    const classificacaoAtual = classificarMedicaoGap(atualMedida, nominal, tolerancia);
+    const situacaoAtual = classificacaoAtual.situacao;
+    for (const k of posicoes) {
+      const estado = classificacaoAtual.valores[k];
+      if (estado === undefined || estado === "CENTRO_TOLERADO") continue;
+      marcarPior(sessaoId, nCad, Math.abs((atualMedida[k] as number) - nominal));
+    }
+    // A evolução acompanha como a cadeira foi ENCONTRADA (1ª medição, antes do
+    // ajuste): é isso que mostra o desgaste entre uma inspeção e outra.
+    const comoEncontrado = posicoes
+      .map((k) => r1.m[k] ?? r2.m[k])
+      .filter((v): v is number => v !== undefined)
+      .map((v) => Math.abs(v - nominal));
     atualizarNCadGap(
       comboAgregado,
       nCad,
@@ -415,14 +466,12 @@ export async function buscarAnaliseCombos(
     }
     const atual = agregadoPorSessao.get(sessaoId) ?? { valor: null, fora: 0, total: 0 };
     const somaAnterior = (atual.valor ?? 0) * atual.total;
-    const novoTotal = atual.total + medidos.length;
-    const novaSoma = somaAnterior + medidos.reduce((a, b) => a + b, 0);
-    // Folga pra erro de ponto flutuante (260,2 - 260,5 dá 0,30000000000001).
-    // Centro fora com as duas pontas boas não conta como fora (regra do GAP).
-    const foraAqui = rodadas.reduce(
-      (soma, { valores }) => soma + posicoes.filter((k) => valores[k] === "FORA").length,
-      0
-    );
+    const novoTotal = atual.total + comoEncontrado.length;
+    const novaSoma = somaAnterior + comoEncontrado.reduce((a, b) => a + b, 0);
+    // "Fora" é como a cadeira FICOU (2ª medição quando existe): cadeira
+    // ajustada e dentro não deixa o equipamento vermelho. Centro fora com as
+    // duas pontas boas também não conta (regra do GAP).
+    const foraAqui = posicoes.filter((k) => classificacaoAtual.valores[k] === "FORA").length;
     agregadoPorSessao.set(sessaoId, {
       valor: novaSoma / novoTotal,
       fora: atual.fora + foraAqui,
@@ -460,6 +509,7 @@ export async function buscarAnaliseCombos(
         if (d.dente === undefined) continue;
         atualizarPior(comboAgregado, { nCad: juncao.indice, valor: d.dente, data: sessao.data }, false);
         atualizarNCad(comboAgregado, juncao.indice, d.dente, sessao.data, false);
+        marcarPior(sessaoId, juncao.indice, d.dente);
         comboAgregado.somaTolerancia += tolerancia;
         comboAgregado.contagemTolerancia += 1;
         soma += d.dente;
@@ -482,6 +532,7 @@ export async function buscarAnaliseCombos(
     const comboAgregado = comboDaSessao(sessao);
     atualizarPior(comboAgregado, { nCad: segmento, valor, data: sessao.data }, false);
     atualizarNCad(comboAgregado, segmento, valor, sessao.data, false);
+    marcarPior(sessaoId, segmento, valor);
     comboAgregado.somaTolerancia += tolerancia;
     comboAgregado.contagemTolerancia += 1;
     const atual = agregadoPorSessao.get(sessaoId) ?? { valor: null, fora: 0, total: 0 };
@@ -495,6 +546,12 @@ export async function buscarAnaliseCombos(
 
   // GAP da MCC4: desvio da medição (como encontrado, antes do calço) em
   // relação ao nominal de 255,00. Ponto "aberto" não tem medida e fica fora.
+  // Fora com calço registrado é AJUSTADO (levado ao padrão), não fora —
+  // a mesma regra do PDF e do histórico.
+  const gapMcc4PorSegmento = new Map<
+    string,
+    { sessaoId: string; segmento: number; valores: number[]; situacoes: string[] }
+  >();
   for (const linha of gapMcc4 ?? []) {
     const sessaoId = linha.sessao_id as string;
     const sessao = sessaoPorId.get(sessaoId);
@@ -503,18 +560,46 @@ export async function buscarAnaliseCombos(
     if (bruto === null || bruto === undefined) continue;
     const segmento = Number(linha.segmento);
     const valor = Math.abs(Number(bruto) - GAP_MCC4.nominal);
+    const situacao =
+      situacaoGapMcc4({
+        segmento,
+        ponto: "ENTRADA",
+        lado: "ACIONADO",
+        medicao: Number(bruto),
+        ajuste: linha.ajuste === null || linha.ajuste === undefined ? undefined : Number(linha.ajuste),
+      }) ?? "OK";
     const comboAgregado = comboDaSessao(sessao);
     atualizarPior(comboAgregado, { nCad: segmento, valor, data: sessao.data }, false);
-    atualizarNCad(comboAgregado, segmento, valor, sessao.data, false);
     comboAgregado.somaTolerancia += GAP_MCC4.tolerancia;
     comboAgregado.contagemTolerancia += 1;
+    if (situacao !== "AJUSTADO") marcarPior(sessaoId, segmento, valor);
+    const chaveSegmento = `${sessaoId}|${segmento}`;
+    const grupo = gapMcc4PorSegmento.get(chaveSegmento) ?? {
+      sessaoId,
+      segmento,
+      valores: [],
+      situacoes: [],
+    };
+    grupo.valores.push(valor);
+    grupo.situacoes.push(situacao);
+    gapMcc4PorSegmento.set(chaveSegmento, grupo);
     const atual = agregadoPorSessao.get(sessaoId) ?? { valor: null, fora: 0, total: 0 };
     const somaAnterior = (atual.valor ?? 0) * atual.total;
     agregadoPorSessao.set(sessaoId, {
       valor: (somaAnterior + valor) / (atual.total + 1),
-      fora: atual.fora + (valor > GAP_MCC4.tolerancia + 1e-9 ? 1 : 0),
+      fora: atual.fora + (situacao === "FORA" ? 1 : 0),
       total: atual.total + 1,
     });
+  }
+  for (const { sessaoId, segmento, valores, situacoes } of gapMcc4PorSegmento.values()) {
+    const sessao = sessaoPorId.get(sessaoId)!;
+    const estado = situacoes.includes("FORA")
+      ? "FORA"
+      : situacoes.includes("AJUSTADO")
+        ? "AJUSTADO"
+        : "OK";
+    const maior = Math.max(...valores);
+    atualizarNCadGap(comboDaSessao(sessao), segmento, maior, estado, maior, sessao.data);
   }
 
   // Empeno e Desgaste não tem regra de tolerância cadastrada (é só o
@@ -556,6 +641,7 @@ export async function buscarAnaliseCombos(
     if (!comboAgregado.ultimaDataVista || sessao.data >= comboAgregado.ultimaDataVista) {
       comboAgregado.ultimaDataVista = sessao.data;
       comboAgregado.foraToleranciaAgora = agregado.fora > 0;
+      comboAgregado.piorAgora = piorPorSessao.get(sessaoId) ?? null;
     }
   }
 
@@ -583,6 +669,7 @@ export async function buscarAnaliseCombos(
         medicoesTolerancia: 0,
         piorPonto: null,
         foraToleranciaAgora: false,
+        piorAgora: null,
         toleranciaMm: null,
         tendencia: null,
         intervaloMedioDias: null,
@@ -600,19 +687,21 @@ export async function buscarAnaliseCombos(
     const ultimaMedicaoEm = agregado.serie[agregado.serie.length - 1].data;
     const variacaoAbsoluta = ultimoValor - primeiroValor;
     const variacaoPercentual = primeiroValor !== 0 ? (variacaoAbsoluta / primeiroValor) * 100 : null;
-    const variacaoPorMedicao =
-      agregado.serie.length > 1 ? variacaoAbsoluta / (agregado.serie.length - 1) : null;
+    const variacaoPorMedicao = ritmoPorMedicao(agregado.serie.map((p) => p.valor));
 
     const toleranciaMm = !temToleranciaDefinida
       ? null
       : TOLERANCIA_FIXA_MM[combo.tipoFicha] ??
         (agregado.contagemTolerancia > 0 ? agregado.somaTolerancia / agregado.contagemTolerancia : null);
 
-    const LIMIAR_ESTAVEL = 0.0005; // mm por medição — abaixo disso, considera "estável"
+    // Tendência só com medições suficientes, e pela reta que melhor passa por
+    // todas elas (não só 1ª x última). Mudança total na reta abaixo do mínimo
+    // = estável (é da ordem da leitura do instrumento).
+    const n = agregado.serie.length;
     const tendencia: AnaliseCombo["tendencia"] =
-      variacaoPorMedicao === null
+      variacaoPorMedicao === null || n < MEDICOES_MINIMAS_TENDENCIA
         ? null
-        : Math.abs(variacaoPorMedicao) < LIMIAR_ESTAVEL
+        : Math.abs(variacaoPorMedicao * (n - 1)) < VARIACAO_MINIMA_TENDENCIA_MM
           ? "estavel"
           : combo.tipoFicha === "EMPENO_DESGASTE"
             ? variacaoPorMedicao < 0
@@ -644,8 +733,11 @@ export async function buscarAnaliseCombos(
       tendencia === "piorando" &&
       !(temToleranciaDefinida && agregado.foraToleranciaAgora)
     ) {
+      // A partir do pior ponto de agora (não da média): é ele que sai primeiro.
       const distanciaAtual =
-        combo.tipoFicha === "EMPENO_DESGASTE" ? ultimoValor : toleranciaMm - ultimoValor;
+        combo.tipoFicha === "EMPENO_DESGASTE"
+          ? ultimoValor
+          : toleranciaMm - (agregado.piorAgora?.valor ?? ultimoValor);
       const ritmo = Math.abs(variacaoPorMedicao);
       if (distanciaAtual > 0 && ritmo > 0) {
         medicoesAteForaTolerancia = Math.ceil(distanciaAtual / ritmo);
@@ -696,6 +788,7 @@ export async function buscarAnaliseCombos(
       medicoesTolerancia: agregado.medicoesTolerancia,
       piorPonto: agregado.pior,
       foraToleranciaAgora: temToleranciaDefinida && agregado.foraToleranciaAgora,
+      piorAgora: temToleranciaDefinida ? agregado.piorAgora : null,
       toleranciaMm,
       tendencia,
       intervaloMedioDias,
@@ -715,7 +808,7 @@ function descricaoDoValor(tipoFicha: TipoFicha): string {
     case "PASS_LINE_DESEMPENADEIRA":
       return "Folga média entre rolo e régua";
     case "GAP":
-      return "Desvio médio do GAP nominal";
+      return "Desvio médio do GAP nominal, como encontrado (1ª medição)";
     case "EMPENO_DESGASTE":
       return "Diâmetro médio do rolo";
     case "PASS_LINE_SEGMENTOS":
