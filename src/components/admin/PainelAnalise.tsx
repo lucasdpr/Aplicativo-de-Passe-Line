@@ -35,7 +35,7 @@ import {
 } from "recharts";
 import { lerDados } from "@/lib/lerDados";
 import type { Maquina } from "@/types";
-import { type AnaliseCombo, type PontoSerie } from "@/lib/analise";
+import { MEDICOES_MINIMAS_TENDENCIA, type AnaliseCombo, type PontoSerie } from "@/lib/analise";
 
 // ---------- Regras de leitura ----------
 
@@ -55,16 +55,14 @@ function formatarDataLonga(dataIso: string): string {
 const mm = (v: number, casas = 2) => `${v.toFixed(casas).replace(".", ",")} mm`;
 const sinal = (v: number) => (v > 0 ? "+" : v < 0 ? "−" : "");
 
-/** Empeno/Desgaste: diâmetro caindo = mais gasto = pior. Nas outras: desvio subindo = pior. */
-/** Abaixo disso a diferença é da leitura do instrumento, não do equipamento. */
-const VARIACAO_MINIMA_MM = 0.05;
-
+/**
+ * Mesma regra em toda a tela: a tendência calculada na análise (reta por
+ * todas as medições, mínimo de 3). null = estável ou poucas medições.
+ */
 function estaPiorando(combo: AnaliseCombo): boolean | null {
-  if (combo.variacaoAbsoluta === null) return null;
-  if (Math.abs(combo.variacaoAbsoluta) < VARIACAO_MINIMA_MM - 1e-9) return null;
-  return combo.tipoFicha === "EMPENO_DESGASTE"
-    ? combo.variacaoAbsoluta < 0
-    : combo.variacaoAbsoluta > 0;
+  if (combo.tendencia === "piorando") return true;
+  if (combo.tendencia === "melhorando") return false;
+  return null;
 }
 
 function rotuloPosicao(tipoFicha: AnaliseCombo["tipoFicha"]) {
@@ -117,7 +115,7 @@ function textoTendencia(combo: AnaliseCombo): string {
   if (combo.tendencia === "estavel") return "Estável entre medições";
   if (combo.tendencia === "melhorando") return "Melhorando a cada medição";
   if (combo.tendencia === "piorando") return "Piorando a cada medição";
-  return "Poucas medições para saber a tendência";
+  return `Poucas medições (precisa de ${MEDICOES_MINIMAS_TENDENCIA}) para ver a tendência`;
 }
 
 function IconeTendencia({ combo, size = 13 }: { combo: AnaliseCombo; size?: number }) {
@@ -126,10 +124,15 @@ function IconeTendencia({ combo, size = 13 }: { combo: AnaliseCombo; size?: numb
   return <Minus size={size} />;
 }
 
-/** Quanto do limite o último valor já usa (só para fichas medidas como desvio). */
+/**
+ * Quanto do limite o PIOR ponto da última medição já usa. A média escondia a
+ * cadeira ruim (2 fora entre 12 boas dava 84%).
+ */
 function usoDaTolerancia(c: AnaliseCombo): number | null {
-  if (c.toleranciaMm === null || c.ultimoValor === null || c.tipoFicha === "EMPENO_DESGASTE") return null;
-  return (Math.abs(c.ultimoValor) / c.toleranciaMm) * 100;
+  if (c.toleranciaMm === null || c.tipoFicha === "EMPENO_DESGASTE") return null;
+  const valor = c.piorAgora?.valor ?? c.ultimoValor;
+  if (valor === null) return null;
+  return (Math.abs(valor) / c.toleranciaMm) * 100;
 }
 
 /**
@@ -303,7 +306,8 @@ export function PainelAnalise() {
             chave: chaveDe(c),
             variacao: Number((c.variacaoAbsoluta ?? 0).toFixed(3)),
             cor: p === true ? "#f87171" : p === false ? "#4ade80" : "var(--text-faint)",
-            estado: p === true ? "Piorou" : p === false ? "Melhorou" : "Estável",
+            estado:
+              p === true ? "Piorou" : p === false ? "Melhorou" : c.tendencia === "estavel" ? "Estável" : "Poucas medições",
           };
         })
         .sort((a, b) => Math.abs(b.variacao) - Math.abs(a.variacao)),
@@ -347,7 +351,7 @@ export function PainelAnalise() {
         <div className="space-y-5">
           <div className="entrar grid grid-cols-2 gap-3 lg:grid-cols-4" style={{ animationDelay: "60ms" }}>
             <Kpi rotulo="Fora da tolerância" valor={foraAgora} nota="na última medição" cor="var(--danger)" icon={AlertTriangle} />
-            <Kpi rotulo="Piorando" valor={piorando} nota="desde a 1ª medição" cor="var(--warning)" icon={TrendingUp} />
+            <Kpi rotulo="Piorando" valor={piorando} nota={`tendência de ${MEDICOES_MINIMAS_TENDENCIA}+ medições`} cor="var(--warning)" icon={TrendingUp} />
             <Kpi rotulo="Medição atrasada" valor={atrasados.length} nota="passaram do prazo" cor={atrasados.length ? "var(--danger)" : "var(--border-strong)"} icon={CalendarClock} />
             <Kpi rotulo="Com histórico" valor={comDados.length} nota={`${semHistorico.length} ainda sem medição`} cor="var(--primary-strong)" icon={Activity} />
           </div>
@@ -436,7 +440,7 @@ export function PainelAnalise() {
                   {[
                     ["#f87171", "Piorou"],
                     ["#4ade80", "Melhorou"],
-                    ["var(--text-faint)", "Estável"],
+                    ["var(--text-faint)", "Estável ou poucas medições"],
                   ].map(([cor, t]) => (
                     <span key={t} className="flex items-center gap-1.5">
                       <span className="h-2.5 w-2.5 rounded-sm" style={{ background: cor }} />
@@ -575,11 +579,18 @@ function Detalhe({
   const posicoes = [...c.detalhePorNCad].sort((a, b) => a.nCad - b.nCad).map((d) => ({
     pos: c.tipoFicha === "PASS_LINE_SEGMENTOS" && d.nCad === 0 ? "B" : String(d.nCad),
     valor: Number(d.ultimoValor.toFixed(3)),
-    fora: tol !== null && Math.abs(d.ultimoValor) > tol + 1e-9,
+    // GAP: a situação já vem decidida (regra do centro); nas outras fichas, é o limite.
+    fora: d.ultimoEstado ? d.ultimoEstado === "FORA" : tol !== null && Math.abs(d.ultimoValor) > tol + 1e-9,
+    // Centro fora com as duas pontas boas: cadeira OK, mas o desgaste do meio fica à vista.
+    soCentro: d.ultimoEstado === "CENTRO_FORA",
+    // GAP MCC4: estava fora e foi calçado — já está no padrão.
+    ajustado: d.ultimoEstado === "AJUSTADO",
     pior: d.piorValor,
     piorData: d.piorData,
   }));
   const qtdForaPos = posicoes.filter((p) => p.fora).length;
+  const qtdSoCentro = posicoes.filter((p) => p.soCentro).length;
+  const qtdAjustado = posicoes.filter((p) => p.ajustado).length;
   const corVariacao = piorando === true ? "#fca5a5" : piorando === false ? "#4ade80" : "var(--text)";
 
   return (
@@ -625,6 +636,11 @@ function Detalhe({
               <span style={{ width: `${Math.min(100, uso)}%`, background: uso > 100 ? "var(--danger)" : uso > 80 ? "var(--warning)" : "var(--success)" }} />
             </div>
           )}
+          {uso !== null && c.piorAgora && (
+            <div className="mt-1.5 text-xs text-[var(--text-faint)]">
+              pior ponto: {rotuloPosicao(c.tipoFicha)} {c.piorAgora.nCad} · {mm(c.piorAgora.valor, 2)}
+            </div>
+          )}
           {uso === null && <div className="mt-1 text-xs text-[var(--text-faint)]">sem limite nesta ficha</div>}
         </Metrica>
         <Metrica
@@ -636,7 +652,13 @@ function Detalhe({
         <Metrica
           rotulo="Ritmo por medição"
           valor={c.variacaoPorMedicao !== null ? `${sinal(c.variacaoPorMedicao)}${mm(Math.abs(c.variacaoPorMedicao), 3)}` : "–"}
-          nota={c.intervaloMedioDias !== null ? `a cada ~${Math.round(c.intervaloMedioDias)} dias` : undefined}
+          nota={
+            c.totalSessoes < MEDICOES_MINIMAS_TENDENCIA
+              ? `poucas medições: ainda não indica tendência`
+              : c.intervaloMedioDias !== null
+                ? `reta por ${c.totalSessoes} medições · a cada ~${Math.round(c.intervaloMedioDias)} dias`
+                : undefined
+          }
         />
       </div>
 
@@ -704,6 +726,11 @@ function Detalhe({
                 {tol !== null && (
                   <>
                     {" "}· <span style={{ color: qtdForaPos ? "#fca5a5" : "#4ade80" }}>{qtdForaPos} fora</span> de {posicoes.length}
+                    {qtdSoCentro > 0 && (
+                      <>
+                        {" "}· <span style={{ color: "#fbbf24" }}>{qtdSoCentro} só no centro</span>
+                      </>
+                    )}
                   </>
                 )}
               </span>
@@ -728,20 +755,50 @@ function Detalhe({
                       cursor={{ fill: "rgba(255,255,255,0.04)" }}
                       labelFormatter={(l) => `${rotuloPosicao(c.tipoFicha)} ${l}`}
                       formatter={(v, _n, item) => {
-                        const p = item?.payload as { fora?: boolean };
-                        return [`${Number(v).toFixed(3).replace(".", ",")} mm · ${p?.fora ? "fora" : "dentro"}`, "Desvio"];
+                        const p = item?.payload as { fora?: boolean; soCentro?: boolean; ajustado?: boolean };
+                        const situacao = p?.fora
+                          ? "fora"
+                          : p?.soCentro
+                            ? "só o centro fora, pontas OK"
+                            : p?.ajustado
+                              ? "estava fora, ajustado com calço"
+                              : "dentro";
+                        return [`${Number(v).toFixed(3).replace(".", ",")} mm · ${situacao}`, "Desvio"];
                       }}
                     />
                     {tol !== null && <ReferenceLine y={tol} stroke="#fca5a5" strokeDasharray="5 4" />}
                     <Bar dataKey="valor" radius={[3, 3, 0, 0]}>
                       {posicoes.map((p) => (
-                        <Cell key={p.pos} fill={p.fora ? "#f87171" : "var(--primary-strong)"} fillOpacity={p.fora ? 0.95 : 0.55} />
+                        <Cell
+                          key={p.pos}
+                          fill={p.fora ? "#f87171" : p.soCentro ? "#fbbf24" : p.ajustado ? "#60a5fa" : "var(--primary-strong)"}
+                          fillOpacity={p.fora ? 0.95 : p.soCentro || p.ajustado ? 0.9 : 0.55}
+                        />
                       ))}
                     </Bar>
                   </BarChart>
                 )}
               </ResponsiveContainer>
             </div>
+            {qtdSoCentro > 0 && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-[var(--text-dim)]">
+                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: "#fbbf24" }} aria-hidden />
+                <span>
+                  <strong className="font-medium text-[var(--text)]">Amarelo:</strong> só o centro está fora e as duas
+                  pontas estão dentro. A cadeira conta como OK (regra do supervisor), mas o desgaste do meio continua
+                  aparecendo aqui.
+                </span>
+              </p>
+            )}
+            {qtdAjustado > 0 && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-[var(--text-dim)]">
+                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: "#60a5fa" }} aria-hidden />
+                <span>
+                  <strong className="font-medium text-[var(--text)]">Azul:</strong> estava fora e foi ajustado com
+                  calço. Não conta como fora; a barra mostra como foi encontrado.
+                </span>
+              </p>
+            )}
             <button
               onClick={alternarTabela}
               className="mt-2 flex items-center gap-1 text-xs font-medium text-[var(--text-dim)] hover:text-[var(--text)]"
@@ -764,8 +821,15 @@ function Detalhe({
                     {posicoes.map((p) => (
                       <tr key={p.pos} className="border-t" style={{ borderColor: "var(--border)" }}>
                         <td className="p-2 font-mono font-medium">{p.pos}</td>
-                        <td className="p-2 font-mono" style={{ color: p.fora ? "#fca5a5" : "var(--text-dim)" }}>
+                        <td
+                          className="p-2 font-mono"
+                          style={{
+                            color: p.fora ? "#fca5a5" : p.soCentro ? "#fbbf24" : p.ajustado ? "#93c5fd" : "var(--text-dim)",
+                          }}
+                        >
                           {p.valor.toFixed(3).replace(".", ",")} mm {p.fora && "· fora"}
+                          {p.soCentro && "· só o centro (OK)"}
+                          {p.ajustado && "· ajustado com calço"}
                         </td>
                         <td className="p-2 font-mono text-[var(--text-faint)]">
                           {p.pior.toFixed(3).replace(".", ",")} mm · {formatarData(p.piorData)}
