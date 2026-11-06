@@ -14,10 +14,17 @@ import type {
   LeituraSegmento,
   LinhaGapMcc4,
   TipoFicha,
+  EstadoValorGap,
+  MedicaoGap,
+  PosicaoGap,
 } from "@/types";
 import {
   GAP_MCC4,
   TOLERANCIAS as TOLERANCIAS_MM,
+  classificarMedicaoGap,
+  medicaoAtualGap,
+  primeiraMedicaoGap,
+  segundaMedicaoGap,
   situacaoGapMcc4,
   type SituacaoGapMcc4,
 } from "@/types";
@@ -684,6 +691,8 @@ const COR_FORA = rgb(0.72, 0.09, 0.09);
 const COR_FORA_FUNDO = rgb(0.99, 0.89, 0.89);
 const COR_OK = rgb(0.08, 0.47, 0.22);
 const COR_OK_FUNDO = rgb(0.88, 0.96, 0.9);
+const COR_CENTRO = rgb(0.62, 0.36, 0);
+const COR_CENTRO_FUNDO = rgb(1, 0.86, 0.5);
 const COR_PRIMEIRA = rgb(0.55, 0.38, 0.02);
 const COR_PRIMEIRA_FUNDO = rgb(1, 0.96, 0.84);
 
@@ -693,11 +702,18 @@ function foraDoLimite(valor: number | null | undefined, limite: number) {
   return Math.abs(valor) > limite + 1e-9;
 }
 
-function foraGap(valor: number | null | undefined, l: LinhaGap) {
-  if (valor === null || valor === undefined || Number.isNaN(valor)) return false;
-  if (l.toleranciaMm === null || l.toleranciaMm === undefined) return false;
-  // Pequena folga pra erro de ponto flutuante (ex.: 260,5 - 260,0 = 0,5000001)
-  return Math.abs(valor - l.gapNominal) > l.toleranciaMm + 1e-9;
+/** Situação de uma rodada (1ª, 2ª ou a medida atual) com a regra do centro. */
+function situacaoGap(m: MedicaoGap, l: LinhaGap) {
+  return classificarMedicaoGap(m, l.gapNominal, l.toleranciaMm);
+}
+
+const ESTILO_GAP_FORA = { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true };
+const ESTILO_GAP_CENTRO = { cor: COR_CENTRO, fundo: COR_CENTRO_FUNDO, negrito: true };
+
+function estiloEstadoGap(estado: EstadoValorGap | undefined) {
+  if (estado === "FORA") return ESTILO_GAP_FORA;
+  if (estado === "CENTRO_TOLERADO") return ESTILO_GAP_CENTRO;
+  return undefined;
 }
 
 function textoToleranciaGap(dados: LinhaGap[]) {
@@ -711,6 +727,11 @@ function textoToleranciaGap(dados: LinhaGap[]) {
 }
 
 const LEGENDA_FORA = { cor: COR_FORA, fundo: COR_FORA_FUNDO, texto: "Fora da tolerância" };
+const LEGENDA_CENTRO = {
+  cor: COR_CENTRO,
+  fundo: COR_CENTRO_FUNDO,
+  texto: "Centro fora, pontas OK (cadeira OK)",
+};
 
 /** Texto que quebra em linhas pra caber na largura da página (com nova página se precisar). */
 function paragrafo(ctx: Ctx, texto: string, cor: RGB, negrito = false) {
@@ -742,17 +763,21 @@ function paragrafo(ctx: Ctx, texto: string, cor: RGB, negrito = false) {
  * 2ª medição — o PDF só precisa deixar isso apontado).
  */
 function resumoForaGap(ctx: Ctx, dados: LinhaGap[]) {
-  const primeiras: (keyof LinhaGap)[] = ["primeiraAcionado", "primeiraCentro", "primeiraNaoAcionado"];
   const segundas: (keyof LinhaGap)[] = ["segundaAcionado", "segundaCentro", "segundaNaoAcionado"];
   const tem = (v: unknown) => v !== null && v !== undefined;
-  const foraNa = (l: LinhaGap, campos: (keyof LinhaGap)[]) =>
-    campos.some((c) => foraGap(l[c] as number | undefined, l));
+  // Centro fora com as duas pontas boas não reprova a cadeira (regra do GAP).
+  const foraNa = (m: MedicaoGap, l: LinhaGap) => situacaoGap(m, l).situacao === "FORA";
 
-  const foraPrimeira = dados.filter((l) => foraNa(l, primeiras));
+  const foraPrimeira = dados.filter((l) => foraNa(primeiraMedicaoGap(l), l));
   const semSegunda = foraPrimeira.filter((l) => !segundas.some((c) => tem(l[c])));
-  const continuaFora = dados.filter((l) => segundas.some((c) => tem(l[c])) && foraNa(l, segundas));
+  const continuaFora = dados.filter(
+    (l) => segundas.some((c) => tem(l[c])) && foraNa(segundaMedicaoGap(l), l)
+  );
   const corrigidas = foraPrimeira.filter(
-    (l) => segundas.some((c) => tem(l[c])) && !foraNa(l, segundas)
+    (l) => segundas.some((c) => tem(l[c])) && !foraNa(segundaMedicaoGap(l), l)
+  );
+  const centroTolerado = dados.filter(
+    (l) => situacaoGap(medicaoAtualGap(l), l).situacao === "CENTRO_FORA"
   );
   const lista = (ls: LinhaGap[]) => (ls.length ? ls.map((l) => l.nCad).join(", ") : "nenhuma");
 
@@ -772,10 +797,15 @@ function resumoForaGap(ctx: Ctx, dados: LinhaGap[]) {
     continuaFora.length ? COR_FORA : COR_TEXTO,
     continuaFora.length > 0
   );
+  paragrafo(
+    ctx,
+    `Centro fora com as duas pontas OK, cadeira aceita (${centroTolerado.length}): ${lista(centroTolerado)}`,
+    centroTolerado.length ? COR_CENTRO : COR_TEXTO
+  );
 }
 
 function pdfGapCompleto(ctx: Ctx, dados: LinhaGap[]) {
-  linhaInfo(ctx, textoToleranciaGap(dados), [LEGENDA_FORA]);
+  linhaInfo(ctx, textoToleranciaGap(dados), [LEGENDA_FORA, LEGENDA_CENTRO]);
 
   const medidas: (keyof LinhaGap)[] = [
     "primeiraAcionado",
@@ -825,9 +855,11 @@ function pdfGapCompleto(ctx: Ctx, dados: LinhaGap[]) {
         const campo = medidas[coluna - 3];
         if (!campo || ehAjuste(campo)) return undefined;
         const l = dados[linha];
-        return foraGap(l[campo] as number | undefined, l)
-          ? { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true }
-          : undefined;
+        const primeira = campo.startsWith("primeira");
+        const { valores } = situacaoGap(primeira ? primeiraMedicaoGap(l) : segundaMedicaoGap(l), l);
+        const posicao = campo.replace(/^(primeira|segunda)/, "");
+        const chave = (posicao.charAt(0).toLowerCase() + posicao.slice(1)) as PosicaoGap;
+        return estiloEstadoGap(valores[chave]);
       },
     }
   );
@@ -837,6 +869,7 @@ function pdfGapAtualizado(ctx: Ctx, dados: LinhaGap[]) {
   linhaInfo(ctx, textoToleranciaGap(dados), [
     { cor: COR_PRIMEIRA, fundo: COR_PRIMEIRA_FUNDO, texto: "* Valor da 1ª medição (2ª não registrada)" },
     LEGENDA_FORA,
+    LEGENDA_CENTRO,
   ]);
 
   const lados: [keyof LinhaGap, keyof LinhaGap][] = [
@@ -858,11 +891,18 @@ function pdfGapAtualizado(ctx: Ctx, dados: LinhaGap[]) {
     const origens = new Set(valores.map((v) => v.origem).filter((o) => o !== null));
     const mista = origens.size > 1;
     const origem = mista ? "1ª / 2ª" : origens.has(2) ? "2ª" : origens.has(1) ? "1ª" : "";
-    const preenchidos = valores.filter((v) => v.valor !== undefined);
-    const fora = preenchidos.some((v) => foraGap(v.valor, l));
+    const atual = situacaoGap(medicaoAtualGap(l), l);
     const situacao =
-      preenchidos.length === 0 ? "" : fora ? (origens.has(2) ? "FORA" : "FORA S/ 2ª") : "OK";
-    return { l, valores, mista, origem, situacao };
+      atual.situacao === undefined
+        ? ""
+        : atual.situacao === "FORA"
+          ? origens.has(2)
+            ? "FORA"
+            : "FORA S/ 2ª"
+          : atual.situacao === "CENTRO_FORA"
+            ? "OK (CENTRO)"
+            : "OK";
+    return { l, valores, mista, origem, situacao, estados: atual.valores };
   });
 
   desenharTabela(
@@ -875,7 +915,7 @@ function pdfGapAtualizado(ctx: Ctx, dados: LinhaGap[]) {
       { header: "CENTRO", width: 90, alinhar: "centro" },
       { header: "NÃO ACIONADO", width: 90, alinhar: "centro" },
       { header: "MEDIÇÃO USADA", width: 70, alinhar: "centro" },
-      { header: "SITUAÇÃO", width: 65, alinhar: "centro" },
+      { header: "SITUAÇÃO", width: 85, alinhar: "centro" },
     ],
     linhasCalc.map(({ l, valores, mista, origem, situacao }) => [
       String(l.nCad),
@@ -897,14 +937,15 @@ function pdfGapAtualizado(ctx: Ctx, dados: LinhaGap[]) {
         const calc = linhasCalc[linha];
         if (coluna >= 3 && coluna <= 5) {
           const v = calc.valores[coluna - 3];
-          if (foraGap(v.valor, calc.l)) return { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true };
+          const estilo = estiloEstadoGap(calc.estados[(["acionado", "centro", "naoAcionado"] as const)[coluna - 3]]);
+          if (estilo) return estilo;
           if (calc.mista && v.origem === 1) return { cor: COR_PRIMEIRA, fundo: COR_PRIMEIRA_FUNDO };
           return undefined;
         }
         if (coluna === 7 && calc.situacao) {
-          return calc.situacao === "OK"
-            ? { cor: COR_OK, fundo: COR_OK_FUNDO, negrito: true }
-            : { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true };
+          if (calc.situacao === "OK") return { cor: COR_OK, fundo: COR_OK_FUNDO, negrito: true };
+          if (calc.situacao === "OK (CENTRO)") return ESTILO_GAP_CENTRO;
+          return ESTILO_GAP_FORA;
         }
         return undefined;
       },

@@ -1,6 +1,8 @@
 import { dentesPassLineMcc4 } from "@/lib/passLineMcc4";
 import {
   TOLERANCIAS,
+  classificarMedicaoGap,
+  medicaoAtualGap,
   situacaoGapMcc4,
   type LeituraSegmento,
   type LinhaGap,
@@ -29,15 +31,11 @@ export function contarForaPorSessao(
   const somar = (id: string) => fora.set(id, (fora.get(id) ?? 0) + 1);
 
   for (const l of linhasGap) {
-    const pares = [
-      [l.segundaAcionado, l.primeiraAcionado],
-      [l.segundaCentro, l.primeiraCentro],
-      [l.segundaNaoAcionado, l.primeiraNaoAcionado],
-    ] as const;
-    for (const [segunda, primeira] of pares) {
-      const valor = segunda ?? primeira;
-      if (valor === undefined || valor === null) continue;
-      if (Math.abs(valor - l.gapNominal) > l.toleranciaMm + EPS) somar(l.sessaoId);
+    // Vale a 2ª medição quando existe, senão a 1ª. Centro fora com as duas
+    // pontas boas não conta (regra do GAP) — só os valores FORA.
+    const { valores } = classificarMedicaoGap(medicaoAtualGap(l), l.gapNominal, l.toleranciaMm);
+    for (const estado of Object.values(valores)) {
+      if (estado === "FORA") somar(l.sessaoId);
     }
   }
 
