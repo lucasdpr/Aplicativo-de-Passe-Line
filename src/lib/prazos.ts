@@ -33,6 +33,11 @@ const NOMES_FICHA: Record<TipoFicha, string> = {
   GAP_MCC4: "GAP (MCC4)",
 };
 
+/** A ficha tem prazo de medição nessa máquina? (PL dos Segmentos da MCC2/MCC3 não tem.) */
+export function temPrazo(tipoFicha: TipoFicha, maquina: Maquina): boolean {
+  return FICHAS_POR_MAQUINA[maquina].includes(tipoFicha);
+}
+
 /** Prazo, em dias, entre uma medição e a próxima obrigatória. */
 export function intervaloDias(tipoFicha: TipoFicha, maquina: Maquina): number {
   if (maquina === "MCC4") return 45;

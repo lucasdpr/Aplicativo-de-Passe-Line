@@ -36,6 +36,7 @@ import {
 import { lerDados } from "@/lib/lerDados";
 import type { Maquina } from "@/types";
 import { MEDICOES_MINIMAS_TENDENCIA, type AnaliseCombo, type PontoSerie } from "@/lib/analise";
+import { EMENDAS_MCC23 } from "@/lib/passLineMcc23";
 
 // ---------- Regras de leitura ----------
 
@@ -63,6 +64,18 @@ function estaPiorando(combo: AnaliseCombo): boolean | null {
   if (combo.tendencia === "piorando") return true;
   if (combo.tendencia === "melhorando") return false;
   return null;
+}
+
+/**
+ * Nome da posição no gráfico e nas notas. Pass-Line dos Segmentos: na MCC2/MCC3
+ * é a emenda da folha ("4 → 5"); na MCC4 a junção 0 é o Bender ("B").
+ */
+function nomePosicao(c: AnaliseCombo, nCad: number) {
+  if (c.tipoFicha === "PASS_LINE_SEGMENTOS") {
+    if (c.maquina !== "MCC4") return EMENDAS_MCC23[nCad]?.rotulo ?? String(nCad);
+    if (nCad === 0) return "B";
+  }
+  return String(nCad);
 }
 
 function rotuloPosicao(tipoFicha: AnaliseCombo["tipoFicha"]) {
@@ -577,7 +590,7 @@ function Detalhe({
   const topoY = tol !== null ? Math.max(tol * 1.4, maxSerie * 1.15) : undefined;
 
   const posicoes = [...c.detalhePorNCad].sort((a, b) => a.nCad - b.nCad).map((d) => ({
-    pos: c.tipoFicha === "PASS_LINE_SEGMENTOS" && d.nCad === 0 ? "B" : String(d.nCad),
+    pos: nomePosicao(c, d.nCad),
     valor: Number(d.ultimoValor.toFixed(3)),
     // GAP: a situação já vem decidida (regra do centro); nas outras fichas, é o limite.
     fora: d.ultimoEstado ? d.ultimoEstado === "FORA" : tol !== null && Math.abs(d.ultimoValor) > tol + 1e-9,
@@ -638,7 +651,7 @@ function Detalhe({
           )}
           {uso !== null && c.piorAgora && (
             <div className="mt-1.5 text-xs text-[var(--text-faint)]">
-              pior ponto: {rotuloPosicao(c.tipoFicha)} {c.piorAgora.nCad} · {mm(c.piorAgora.valor, 2)}
+              pior ponto: {rotuloPosicao(c.tipoFicha)} {nomePosicao(c, c.piorAgora.nCad)} · {mm(c.piorAgora.valor, 2)}
             </div>
           )}
           {uso === null && <div className="mt-1 text-xs text-[var(--text-faint)]">sem limite nesta ficha</div>}
@@ -851,7 +864,7 @@ function Detalhe({
             </Nota>
           )}
           {c.piorPonto && (
-            <Nota icon={MapPin} cor="var(--text-dim)" titulo={`Pior ponto: ${rotuloPosicao(c.tipoFicha)} ${c.piorPonto.nCad}`}>
+            <Nota icon={MapPin} cor="var(--text-dim)" titulo={`Pior ponto: ${rotuloPosicao(c.tipoFicha)} ${nomePosicao(c, c.piorPonto.nCad)}`}>
               {mm(c.piorPonto.valor, 3)} em {formatarDataLonga(c.piorPonto.data)}
             </Nota>
           )}
@@ -958,7 +971,7 @@ function TabelaGeral({
                     {c.variacaoAbsoluta === null ? "—" : `${sinal(c.variacaoAbsoluta)}${Math.abs(c.variacaoAbsoluta).toFixed(3).replace(".", ",")}`}
                   </td>
                   <td className="px-4 py-2.5 text-[var(--text-dim)]">
-                    {c.piorPonto ? `${rotuloPosicao(c.tipoFicha)} ${c.piorPonto.nCad} · ${c.piorPonto.valor.toFixed(2).replace(".", ",")}` : "—"}
+                    {c.piorPonto ? `${rotuloPosicao(c.tipoFicha)} ${nomePosicao(c, c.piorPonto.nCad)} · ${c.piorPonto.valor.toFixed(2).replace(".", ",")}` : "—"}
                   </td>
                   <td className="px-4 py-2.5 font-mono text-[var(--text-dim)]">
                     {c.foraToleranciaPct === null ? "—" : `${c.foraToleranciaPct.toFixed(1).replace(".", ",")}%`}

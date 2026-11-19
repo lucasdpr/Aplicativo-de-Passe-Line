@@ -10,8 +10,9 @@ import {
   type TipoFicha,
   type Veio,
 } from "@/types";
-import { comboLabel, intervaloDias, type Combo } from "@/lib/prazos";
+import { comboLabel, intervaloDias, temPrazo, type Combo } from "@/lib/prazos";
 import { dentesPassLineMcc4 } from "@/lib/passLineMcc4";
+import { leituraForaMcc23, roloDaLeitura } from "@/lib/passLineMcc23";
 
 const VEIOS_POR_MAQUINA: Record<Maquina, Veio[]> = {
   MCC2: ["C", "D"],
@@ -19,13 +20,15 @@ const VEIOS_POR_MAQUINA: Record<Maquina, Veio[]> = {
   MCC4: ["G", "H"],
 };
 
+/** MCC2/MCC3: o Pass-Line dos Segmentos entra por emenda (igual à folha). */
 const FICHAS_COM_ANALISE: TipoFicha[] = [
   "PASS_LINE_DESEMPENADEIRA",
   "GAP",
   "EMPENO_DESGASTE",
+  "PASS_LINE_SEGMENTOS",
 ];
 
-/** A MCC4 só tem Pass-Line dos Segmentos (por segmento 1–17, não por Nº CAD). */
+/** A MCC4 tem Pass-Line dos Segmentos (por junção) e o GAP dela. */
 const FICHAS_COM_ANALISE_POR_MAQUINA: Record<Maquina, TipoFicha[]> = {
   MCC2: FICHAS_COM_ANALISE,
   MCC3: FICHAS_COM_ANALISE,
@@ -520,18 +523,29 @@ export async function buscarAnaliseCombos(
     if (total > 0) agregadoPorSessao.set(sessaoId, { valor: soma / total, fora, total });
   }
 
+  const emendasMcc23PorSessao = new Map<string, { sessaoId: string; indice: number; valores: number[] }>();
   for (const linha of segmentos ?? []) {
     const sessaoId = linha.sessao_id as string;
     const sessao = sessaoPorId.get(sessaoId);
     if (sessao?.maquina === "MCC4") continue;
     if (!sessao || linha.valor === null || linha.valor === undefined) continue;
-    const segmento = Number(linha.segmento);
+    // Formato da folha: a posição na análise é a EMENDA (índice 0 = 0→1 …
+    // 6 = 6→D). Leitura antiga, por segmento solto, continua por segmento.
+    const rolo = roloDaLeitura({ segmento: String(linha.segmento), posicao: Number(linha.posicao) });
+    const segmento = rolo ? rolo.emenda.indice : Number(linha.segmento);
     if (!Number.isFinite(segmento)) continue;
     const valor = Math.abs(Number(linha.valor));
     const tolerancia = toleranciaSegmentos(sessao.maquina);
     const comboAgregado = comboDaSessao(sessao);
     atualizarPior(comboAgregado, { nCad: segmento, valor, data: sessao.data }, false);
-    atualizarNCad(comboAgregado, segmento, valor, sessao.data, false);
+    if (rolo) {
+      const chaveEmenda = `${sessaoId}|${segmento}`;
+      const grupo = emendasMcc23PorSessao.get(chaveEmenda) ?? { sessaoId, indice: segmento, valores: [] };
+      grupo.valores.push(valor);
+      emendasMcc23PorSessao.set(chaveEmenda, grupo);
+    } else {
+      atualizarNCad(comboAgregado, segmento, valor, sessao.data, false);
+    }
     marcarPior(sessaoId, segmento, valor);
     comboAgregado.somaTolerancia += tolerancia;
     comboAgregado.contagemTolerancia += 1;
@@ -542,6 +556,13 @@ export async function buscarAnaliseCombos(
       fora: atual.fora + (valor > tolerancia + 1e-9 ? 1 : 0),
       total: atual.total + 1,
     });
+  }
+  // Cada emenda vale pela pior leitura dela (fora se passou da tolerância).
+  for (const { sessaoId, indice, valores } of emendasMcc23PorSessao.values()) {
+    const sessao = sessaoPorId.get(sessaoId)!;
+    const maior = Math.max(...valores);
+    const estado = leituraForaMcc23(maior) ? "FORA" : "OK";
+    atualizarNCadGap(comboDaSessao(sessao), indice, maior, estado, maior, sessao.data);
   }
 
   // GAP da MCC4: desvio da medição (como encontrado, antes do calço) em
@@ -753,8 +774,10 @@ export async function buscarAnaliseCombos(
         new Date(`${ultimaMedicaoEm}T00:00:00Z`).getTime()) /
         86_400_000
     );
-    const prazoDias = intervaloDias(combo.tipoFicha, combo.maquina);
-    const diasAtraso = diasDesdeUltimaMedicao - prazoDias;
+    // Ficha sem prazo nessa máquina não fica "atrasada".
+    const diasAtraso = temPrazo(combo.tipoFicha, combo.maquina)
+      ? diasDesdeUltimaMedicao - intervaloDias(combo.tipoFicha, combo.maquina)
+      : null;
 
     const detalhePorNCad: DetalheNCad[] = Array.from(agregado.porNCad.entries())
       .map(([nCad, d]) => ({
