@@ -3,7 +3,7 @@
 import { Fragment, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuid } from "uuid";
-import { ArrowLeft, Layers, Plus, X } from "lucide-react";
+import { ArrowLeft, Layers } from "lucide-react";
 import Link from "next/link";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
@@ -35,11 +35,19 @@ import {
   calcularDente,
   denteFora,
 } from "@/lib/passLineMcc4";
+import {
+  EMENDAS_MCC23,
+  LADOS_MCC23,
+  TOLERANCIA_SEGMENTOS_MCC23,
+  leituraForaMcc23,
+  leiturasIniciaisMcc23,
+  posicaoMcc23,
+  rotuloRolo,
+  type EmendaMcc23,
+} from "@/lib/passLineMcc23";
 import { AvisoRascunho } from "@/components/forms/AvisoRascunho";
 import {
-  SEGMENTOS_PADRAO,
   SEGMENTOS_MCC4,
-  TOLERANCIAS,
   type LadoSegmento,
   type LeituraSegmento,
   type Maquina,
@@ -51,46 +59,27 @@ interface RascunhoPassLineSegmentos {
   leituras: LeituraSegmento[];
 }
 
-// Na MCC4 são 2 pontos por lado (1º e último rolo); nas MCC2/MCC3, 4.
-function posicoesIniciais(maquina: Maquina) {
-  return maquina === "MCC4" ? 2 : 4;
-}
 const LADOS: { key: LadoSegmento; label: string }[] = [
   { key: "ACIONADO", label: "Lado Acionado" },
   { key: "NAO_ACIONADO", label: "Lado Não Acionado" },
 ];
 
-// A MCC4 usa segmentos numerados 1–17 (não tem "0" nem "D"), com tolerância
-// própria — as demais (MCC2/MCC3) usam os segmentos padrão 0–6 e D.
-function segmentosDaMaquina(maquina: Maquina): string[] {
-  return maquina === "MCC4" ? SEGMENTOS_MCC4 : SEGMENTOS_PADRAO;
-}
-
-function toleranciaDaMaquina(maquina: Maquina): number {
-  return maquina === "MCC4" ? TOLERANCIAS.PASS_LINE_SEGMENTOS_MCC4 : TOLERANCIAS.PASS_LINE_SEGMENTOS;
-}
-
 function estadoInicial(maquina: Maquina): LeituraSegmento[] {
+  // MCC2/MCC3: a folha é por emenda, com dois desenhos por lado.
+  if (maquina !== "MCC4") return leiturasIniciaisMcc23();
+  // MCC4: Bender só tem saída; cada segmento 1–17 tem entrada (1) e saída (2).
   const leituras: LeituraSegmento[] = [];
-  if (maquina === "MCC4") {
-    // Bender só tem saída; cada segmento tem entrada (1) e saída (2).
-    for (const { key: lado } of LADOS) {
-      leituras.push({ segmento: SEGMENTO_BENDER, lado, posicao: POSICAO_SAIDA });
-    }
+  for (const { key: lado } of LADOS) {
+    leituras.push({ segmento: SEGMENTO_BENDER, lado, posicao: POSICAO_SAIDA });
   }
-  for (const segmento of segmentosDaMaquina(maquina)) {
+  for (const segmento of SEGMENTOS_MCC4) {
     for (const { key: lado } of LADOS) {
-      for (let posicao = 1; posicao <= posicoesIniciais(maquina); posicao++) {
+      for (const posicao of [POSICAO_ENTRADA, POSICAO_SAIDA]) {
         leituras.push({ segmento, lado, posicao });
       }
     }
   }
   return leituras;
-}
-
-function foraDaTolerancia(valor: number | undefined, tolerancia: number) {
-  if (valor === undefined || Number.isNaN(valor)) return false;
-  return Math.abs(valor) > tolerancia;
 }
 
 function headerDeSessao(s: SessaoMedicao): SessaoHeaderValue {
@@ -214,27 +203,6 @@ function PassLineSegmentosForm() {
     setLeituras(novasLeituras);
     salvarRascunho<RascunhoPassLineSegmentos>(chaveRascunho, { header, leituras: novasLeituras });
     setSalvo(false);
-  }
-
-  function adicionarPosicao(segmento: string, lado: LadoSegmento) {
-    const existentes = leituras.filter(
-      (l) => l.segmento === segmento && l.lado === lado
-    );
-    const proximaPosicao =
-      existentes.length > 0
-        ? Math.max(...existentes.map((l) => l.posicao)) + 1
-        : 1;
-    const novasLeituras = [...leituras, { segmento, lado, posicao: proximaPosicao }];
-    setLeituras(novasLeituras);
-    salvarRascunho<RascunhoPassLineSegmentos>(chaveRascunho, { header, leituras: novasLeituras });
-  }
-
-  function removerPosicao(segmento: string, lado: LadoSegmento, posicao: number) {
-    const novasLeituras = leituras.filter(
-      (l) => !(l.segmento === segmento && l.lado === lado && l.posicao === posicao)
-    );
-    setLeituras(novasLeituras);
-    salvarRascunho<RascunhoPassLineSegmentos>(chaveRascunho, { header, leituras: novasLeituras });
   }
 
   function descartarRascunho() {
@@ -370,7 +338,7 @@ function PassLineSegmentosForm() {
           <p className="text-sm text-[var(--text-dim)]">
             {header.maquina === "MCC4"
               ? `Tolerância do dente (saída de um segmento x entrada do seguinte): ±${TOLERANCIA_DENTE_MCC4.toFixed(2)}mm`
-              : `Tolerância: ±${toleranciaDaMaquina(header.maquina).toFixed(2)}mm — o número de posições varia por segmento e veio`}
+              : `Igual à folha: por emenda, dois desenhos por lado. Tolerância: ±${TOLERANCIA_SEGMENTOS_MCC23.toFixed(2)}mm por leitura`}
           </p>
         </div>
       </div>
@@ -389,89 +357,7 @@ function PassLineSegmentosForm() {
       {header.maquina === "MCC4" ? (
         <TabelaMcc4 leituras={leituras} onValor={setValor} />
       ) : (
-      <div className="grid gap-3 sm:grid-cols-2">
-        {segmentosDaMaquina(header.maquina).map((segmento) => (
-          <div key={segmento} className="surface p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <span
-                className="font-display flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold"
-                style={{
-                  background: "var(--primary-soft)",
-                  color: "var(--primary-strong)",
-                }}
-              >
-                {segmento}
-              </span>
-              <span className="text-sm font-medium text-[var(--text-dim)]">
-                Segmento
-              </span>
-            </div>
-            <div className="space-y-3">
-              {LADOS.map(({ key: lado, label }) => {
-                const posicoes = leituras
-                  .filter((l) => l.segmento === segmento && l.lado === lado)
-                  .sort((a, b) => a.posicao - b.posicao);
-                return (
-                  <div key={lado}>
-                    <div className="mb-1.5 text-xs font-medium text-[var(--text-faint)]">
-                      {label}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {posicoes.map((l) => {
-                        const fora = foraDaTolerancia(l.valor, toleranciaDaMaquina(header.maquina));
-                        return (
-                          <div
-                            key={l.posicao}
-                            className="flex items-center overflow-hidden rounded-lg"
-                            style={{
-                              border: "1px solid var(--border)",
-                              background: "var(--surface-raised)",
-                            }}
-                          >
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              placeholder={`P${l.posicao}`}
-                              className={`input-cell !w-16 !rounded-none !border-0 !bg-transparent text-center ${fora ? "input-fora-tolerancia" : ""}`}
-                              value={formatarValorDigitado(l.valor, 2)}
-                              onChange={(e) =>
-                                setValor(
-                                  segmento,
-                                  lado,
-                                  l.posicao,
-                                  e.target.value
-                                )
-                              }
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                removerPosicao(segmento, lado, l.posicao)
-                              }
-                              className="flex h-full items-center px-1.5 text-[var(--text-faint)] hover:text-[var(--danger)]"
-                              aria-label="Remover posição"
-                            >
-                              <X size={12} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        onClick={() => adicionarPosicao(segmento, lado)}
-                        className="flex items-center gap-1 rounded-lg border border-dashed px-2 py-1.5 text-xs text-[var(--text-faint)] hover:text-[var(--primary-strong)]"
-                        style={{ borderColor: "var(--border-strong)" }}
-                      >
-                        <Plus size={12} /> posição
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
+        <FolhaMcc23 leituras={leituras} onValor={setValor} />
       )}
 
       <button onClick={salvar} disabled={salvando} className="btn-primary">
@@ -583,6 +469,107 @@ function TabelaMcc4({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * MCC2/MCC3, igual ao papel: cada emenda tem, em cada lado, dois desenhos com
+ * um rolo por linha. A seta marca a mesma linha que a folha marca.
+ */
+function FolhaMcc23({
+  leituras,
+  onValor,
+}: {
+  leituras: LeituraSegmento[];
+  onValor: (segmento: string, lado: LadoSegmento, posicao: number, texto: string) => void;
+}) {
+  const valor = (segmento: string, lado: LadoSegmento, posicao: number) =>
+    leituras.find((l) => l.segmento === segmento && l.lado === lado && l.posicao === posicao)?.valor;
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-[var(--text-dim)]">
+        Escreva a leitura na linha do rolo, como no papel (S = segmento, R = rolo; ▸ = linha da
+        seta). Linha vazia fica em branco. Leitura acima de ±
+        {TOLERANCIA_SEGMENTOS_MCC23.toFixed(2).replace(".", ",")} mm fica vermelha.
+      </p>
+      {EMENDAS_MCC23.map((emenda) => (
+        <EmendaMcc23Cartao key={emenda.chave} emenda={emenda} valor={valor} onValor={onValor} />
+      ))}
+    </div>
+  );
+}
+
+function EmendaMcc23Cartao({
+  emenda,
+  valor,
+  onValor,
+}: {
+  emenda: EmendaMcc23;
+  valor: (segmento: string, lado: LadoSegmento, posicao: number) => number | undefined;
+  onValor: (segmento: string, lado: LadoSegmento, posicao: number, texto: string) => void;
+}) {
+  return (
+    <div className="surface p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span
+          className="font-display rounded-lg px-2 py-1 text-xs font-bold"
+          style={{ background: "var(--primary-soft)", color: "var(--primary-strong)" }}
+        >
+          {emenda.rotulo}
+        </span>
+        <span className="text-sm font-medium text-[var(--text-dim)]">Emenda</span>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        {LADOS_MCC23.map(({ key: lado, label }) => (
+          <div key={lado}>
+            <div className="mb-1.5 text-xs font-semibold text-[var(--text-dim)]">{label}</div>
+            <div className="grid grid-cols-2 gap-2">
+              {emenda.desenhos.map((rolos, i) => {
+                const desenho = (i + 1) as 1 | 2;
+                return (
+                  <div
+                    key={desenho}
+                    className="rounded-lg border p-2"
+                    style={{ borderColor: "var(--border)" }}
+                  >
+                    <div className="mb-1 text-[0.7rem] font-medium text-[var(--text-faint)]">
+                      {desenho}º desenho
+                    </div>
+                    <div className="space-y-1">
+                      {rolos.map((rolo, linha) => {
+                        const posicao = posicaoMcc23(desenho, linha);
+                        const v = valor(emenda.chave, lado, posicao);
+                        const fora = leituraForaMcc23(v);
+                        const seta = emenda.setas[i] === linha;
+                        return (
+                          <label key={posicao} className="flex items-center gap-1.5">
+                            <span
+                              className="min-w-0 flex-1 whitespace-nowrap font-mono text-[0.72rem] text-[var(--text-dim)]"
+                              title={`${rotuloRolo(rolo)}${seta ? " (linha da seta no papel)" : ""}`}
+                            >
+                              {seta ? "▸" : "\u00a0"} S{rolo.segmento} · R{rolo.rolo}
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              aria-label={`Emenda ${emenda.rotulo}, ${label}, ${desenho}º desenho, ${rotuloRolo(rolo)}`}
+                              placeholder="—"
+                              className={`input-cell !w-[4.25rem] shrink-0 text-center ${fora ? "input-fora-tolerancia" : ""}`}
+                              value={formatarValorDigitado(v, 2)}
+                              onChange={(e) => onValor(emenda.chave, lado, posicao, e.target.value)}
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -29,6 +29,12 @@ import {
   type SituacaoGapMcc4,
 } from "@/types";
 import { TOLERANCIA_DENTE_MCC4, dentesPassLineMcc4, denteFora } from "@/lib/passLineMcc4";
+import {
+  EMENDAS_MCC23,
+  leituraForaMcc23,
+  posicaoMcc23,
+  roloDaLeitura,
+} from "@/lib/passLineMcc23";
 
 const TITULOS: Record<TipoFicha, string> = {
   PASS_LINE_DESEMPENADEIRA: "MEDIÇÃO E AJUSTE DE PASS-LINE (DESEMPENADEIRA)",
@@ -953,6 +959,103 @@ function pdfGapAtualizado(ctx: Ctx, dados: LinhaGap[]) {
   );
 }
 
+// --- Pass-Line dos Segmentos MCC2/MCC3: igual à folha (por emenda) ---
+
+const ROTULO_ROLO_PDF = (segmento: string, rolo: number) => `SEG ${segmento} - ROLO ${rolo}`;
+
+function pdfPassLineMcc23(ctx: Ctx, dados: LeituraSegmento[]) {
+  // A tolerância já sai no cabeçalho; aqui só a legenda, e que vale por leitura.
+  linhaInfo(ctx, "CADA LEITURA COMPARADA COM A TOLERÂNCIA", [LEGENDA_FORA]);
+  const valor = (chave: string, lado: string, posicao: number) =>
+    dados.find((l) => l.segmento === chave && l.lado === lado && l.posicao === posicao)?.valor;
+
+  // Uma linha da tabela por linha do papel; as colunas repetem o papel:
+  // lado acionado (1º e 2º desenho) e lado não acionado (1º e 2º desenho).
+  const linhas: string[][] = [];
+  const valores: (number | undefined)[][] = [];
+  for (const emenda of EMENDAS_MCC23) {
+    const n = Math.max(emenda.desenhos[0].length, emenda.desenhos[1].length);
+    for (let linha = 0; linha < n; linha++) {
+      const celulas: string[] = [linha === 0 ? emenda.rotulo.replace("→", "-") : ""];
+      const nums: (number | undefined)[] = [undefined];
+      for (const lado of ["ACIONADO", "NAO_ACIONADO"]) {
+        for (const d of [1, 2] as const) {
+          const rolo = emenda.desenhos[d - 1][linha];
+          const v = rolo ? valor(emenda.chave, lado, posicaoMcc23(d, linha)) : undefined;
+          celulas.push(rolo ? ROTULO_ROLO_PDF(rolo.segmento, rolo.rolo) : "", fmt(v));
+          nums.push(undefined, v);
+        }
+      }
+      linhas.push(celulas);
+      valores.push(nums);
+    }
+  }
+
+  desenharTabela(
+    ctx,
+    [
+      { header: "EMENDA", width: 44, alinhar: "centro" },
+      { header: "ROLO", width: 66 },
+      { header: "1º DESENHO", width: 46, alinhar: "centro" },
+      { header: "ROLO", width: 66 },
+      { header: "2º DESENHO", width: 46, alinhar: "centro" },
+      { header: "ROLO", width: 66 },
+      { header: "1º DESENHO", width: 46, alinhar: "centro" },
+      { header: "ROLO", width: 66 },
+      { header: "2º DESENHO", width: 46, alinhar: "centro" },
+    ],
+    linhas,
+    {
+      larguraTotal: true,
+      caberNumaPagina: true,
+      grupos: [
+        { titulo: "", colunas: 1 },
+        { titulo: "LADO ACIONADO", colunas: 4 },
+        { titulo: "LADO NÃO ACIONADO", colunas: 4 },
+      ],
+      estiloCelula: (linha, coluna) =>
+        leituraForaMcc23(valores[linha][coluna]) ? ESTILO_FORA_SEG : undefined,
+    }
+  );
+
+  // Resumo: a emenda está fora se alguma leitura dela passou da tolerância.
+  const foraPorEmenda = EMENDAS_MCC23.map((emenda) => {
+    const lidas = dados
+      .map((l) => ({ l, r: roloDaLeitura(l) }))
+      .filter(({ l, r }) => r?.emenda.chave === emenda.chave && l.valor !== undefined && l.valor !== null);
+    const fora = lidas.filter(({ l }) => leituraForaMcc23(l.valor));
+    const pior = fora.reduce<(typeof fora)[number] | undefined>(
+      (a, b) => (!a || Math.abs(b.l.valor as number) > Math.abs(a.l.valor as number) ? b : a),
+      undefined
+    );
+    return { emenda, lidas: lidas.length, fora: fora.length, pior };
+  });
+  const comFora = foraPorEmenda.filter((e) => e.fora > 0);
+  const semLeitura = foraPorEmenda.filter((e) => e.lidas === 0).map((e) => e.emenda.rotulo.replace("→", "-"));
+  ctx.y -= 4;
+  paragrafo(ctx, "RESUMO DAS EMENDAS FORA DA TOLERÂNCIA", COR_PRIMARIA, true);
+  if (comFora.length === 0) {
+    paragrafo(ctx, "Nenhuma leitura fora da tolerância.", COR_OK);
+  } else {
+    for (const e of comFora) {
+      const p = e.pior!;
+      paragrafo(
+        ctx,
+        `Emenda ${e.emenda.rotulo.replace("→", "-")}: ${e.fora} leitura(s) fora. Pior: ${fmt(p.l.valor)} mm (${
+          p.l.lado === "ACIONADO" ? "lado acionado" : "lado não acionado"
+        }, ${p.r!.desenho}º desenho, ${ROTULO_ROLO_PDF(p.r!.rolo.segmento, p.r!.rolo.rolo).toLowerCase()})`,
+        COR_FORA,
+        true
+      );
+    }
+  }
+  if (semLeitura.length) {
+    paragrafo(ctx, `Emendas sem leitura: ${semLeitura.join(", ")}`, COR_TEXTO);
+  }
+}
+
+const ESTILO_FORA_SEG = { cor: COR_FORA, fundo: COR_FORA_FUNDO, negrito: true };
+
 // --- GAP da MCC4: igual à "Planilha de medição e ajuste GAP da MCC #4" ---
 
 const CELULAS_GAP_MCC4 = [
@@ -1308,6 +1411,12 @@ export async function gerarPdfSessao(
     case "PASS_LINE_SEGMENTOS": {
       if (ehPassLineMcc4) {
         pdfPassLineMcc4(ctx, linhas as LeituraSegmento[], modoGap === "ATUALIZADO");
+        break;
+      }
+      // MCC2/MCC3 no formato da folha (por emenda). Leituras antigas, no
+      // formato de posições soltas, caem na tabela simples abaixo.
+      if ((linhas as LeituraSegmento[]).some((l) => roloDaLeitura(l))) {
+        pdfPassLineMcc23(ctx, linhas as LeituraSegmento[]);
         break;
       }
       // Ordem: segmento em ordem numérica (1, 2, … 17 — antes era por
