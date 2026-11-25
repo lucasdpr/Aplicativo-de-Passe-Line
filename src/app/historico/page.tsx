@@ -14,9 +14,7 @@ import {
   RefreshCw,
   Trash2,
   CalendarDays,
-  Pencil,
 } from "lucide-react";
-import Link from "next/link";
 import { AuthGuard } from "@/components/AuthGuard";
 import { StatusBar } from "@/components/StatusBar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -24,7 +22,6 @@ import { CalendarioMes } from "@/components/CalendarioMes";
 import { db } from "@/lib/db/dexie";
 import { puxarAtualizacoes, sincronizarPendentes, excluirSessao } from "@/lib/db/sync";
 import { useAuthStore } from "@/lib/auth";
-import { linkEdicao } from "@/lib/fichas";
 import type { SessaoMedicao, TipoFicha } from "@/types";
 
 const FICHA_INFO: Record<
@@ -353,16 +350,6 @@ function CartaoSessao({
                   ? "Só dentes"
                   : "Atualizado"}
             </button>
-          )}
-          {ehAdmin && (
-            <Link
-              href={linkEdicao(s)}
-              title="Editar a medição: data, veio, observação e valores"
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-              style={{ background: "var(--surface-raised)", color: "var(--text-dim)" }}
-            >
-              <Pencil size={13} /> Editar
-            </Link>
           )}
           {ehAdmin && (
             <button
