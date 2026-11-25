@@ -18,9 +18,10 @@ import { useAuthStore, listarTecnicos } from "@/lib/auth";
 import { db } from "@/lib/db/dexie";
 import { excluirSessao, puxarAtualizacoes } from "@/lib/db/sync";
 import { contarForaPorSessao } from "@/lib/foraTolerancia";
+import { linkEdicao } from "@/lib/fichas";
 import { EVENTO_ULTIMA_ATUALIZACAO, lerUltimaAtualizacao } from "@/lib/ultimaSync";
 import { CalendarioMes } from "@/components/CalendarioMes";
-import type { Edicao, SessaoMedicao, Tecnico, TipoFicha } from "@/types";
+import type { Edicao, SessaoMedicao, Tecnico } from "@/types";
 
 const NOMES_FICHA: Record<string, string> = {
   PASS_LINE_DESEMPENADEIRA: "Pass-Line (Desempenadeira)",
@@ -30,13 +31,6 @@ const NOMES_FICHA: Record<string, string> = {
   GAP_MCC4: "GAP (MCC4)",
 };
 
-const SLUG_POR_TIPO: Record<TipoFicha, string> = {
-  PASS_LINE_DESEMPENADEIRA: "pass-line-desempenadeira",
-  GAP: "gap",
-  EMPENO_DESGASTE: "empeno-desgaste",
-  PASS_LINE_SEGMENTOS: "pass-line-segmentos",
-  GAP_MCC4: "gap-mcc4",
-};
 
 export default function AdminHistoricoPage() {
   const tecnico = useAuthStore((s) => s.tecnicoLogado);
@@ -369,7 +363,7 @@ export default function AdminHistoricoPage() {
                         {ehAdmin && (
                           <>
                             <Link
-                              href={`/formularios/${SLUG_POR_TIPO[s.tipoFicha]}?sessaoId=${s.id}`}
+                              href={linkEdicao(s)}
                               className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
                               style={{
                                 background: "var(--surface-raised)",
