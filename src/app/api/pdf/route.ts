@@ -90,7 +90,9 @@ export async function GET(req: NextRequest) {
         : sessao.tipoFicha === "GAP_MCC4"
           ? "-medida-final"
           : sessao.tipoFicha === "PASS_LINE_SEGMENTOS"
-            ? "-dentes"
+            ? sessao.maquina === "MCC4"
+              ? "-dentes"
+              : "-medida-final"
             : "";
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {

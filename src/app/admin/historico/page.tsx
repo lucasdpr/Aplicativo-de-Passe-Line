@@ -335,6 +335,11 @@ export default function AdminHistoricoPage() {
                                   ["TUDO", "PDF ver tudo"],
                                   ["ATUALIZADO", "PDF só dentes"],
                                 ] as const)
+                            : s.tipoFicha === "PASS_LINE_SEGMENTOS"
+                              ? ([
+                                  ["TUDO", "PDF ver tudo"],
+                                  ["ATUALIZADO", "PDF medida final"],
+                                ] as const)
                             : ([["TUDO", "Gerar PDF"]] as const)
                         ).map(([modo, rotulo]) => (
                           <button

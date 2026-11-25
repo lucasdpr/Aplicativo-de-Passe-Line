@@ -39,11 +39,8 @@ const FICHA_INFO: Record<
 };
 
 function temDoisPdfs(s: SessaoMedicao) {
-  return (
-    s.tipoFicha === "GAP" ||
-    s.tipoFicha === "GAP_MCC4" ||
-    (s.tipoFicha === "PASS_LINE_SEGMENTOS" && s.maquina === "MCC4")
-  );
+  // Pass-Line dos Segmentos: todas as máquinas (MCC4: só dentes; MCC2/MCC3: medida final).
+  return s.tipoFicha === "GAP" || s.tipoFicha === "GAP_MCC4" || s.tipoFicha === "PASS_LINE_SEGMENTOS";
 }
 
 export default function HistoricoPage() {
@@ -308,7 +305,9 @@ function CartaoSessao({
                   ? "PDF com todos os campos (1ª medida, ajuste e 2ª medida)"
                   : s.tipoFicha === "GAP_MCC4"
                     ? "PDF com todas as medições e ajustes"
-                    : "Gerar PDF oficial"
+                    : s.tipoFicha === "PASS_LINE_SEGMENTOS"
+                      ? "PDF com todas as leituras, igual à folha"
+                      : "Gerar PDF oficial"
                 : "Disponível após sincronizar com o servidor"
             }
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
@@ -331,8 +330,10 @@ function CartaoSessao({
               title={
                 s.tipoFicha === "GAP_MCC4"
                   ? "PDF com a medida final de cada ponto (a do ajuste, quando houve) e o que ficou fora"
-                  : s.tipoFicha === "PASS_LINE_SEGMENTOS"
+                  : s.tipoFicha === "PASS_LINE_SEGMENTOS" && s.maquina === "MCC4"
                     ? "PDF só com o resultado (dente) de cada emenda e o que ficou fora"
+                  : s.tipoFicha === "PASS_LINE_SEGMENTOS"
+                    ? "PDF com a pior leitura de cada lado em cada emenda e o que ficou fora"
                   : "PDF com o valor atualizado por Nº CAD: usa a 2ª medida quando ela já foi feita, senão a 1ª"
               }
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40"
@@ -346,7 +347,7 @@ function CartaoSessao({
               ) : (
                 <FileDown size={13} />
               )}
-              {s.tipoFicha === "GAP_MCC4"
+              {s.tipoFicha === "GAP_MCC4" || (s.tipoFicha === "PASS_LINE_SEGMENTOS" && s.maquina !== "MCC4")
                 ? "Medida final"
                 : s.tipoFicha === "PASS_LINE_SEGMENTOS"
                   ? "Só dentes"

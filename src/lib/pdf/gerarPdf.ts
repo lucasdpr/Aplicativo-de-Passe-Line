@@ -1018,7 +1018,83 @@ function pdfPassLineMcc23(ctx: Ctx, dados: LeituraSegmento[]) {
     }
   );
 
-  // Resumo: a emenda está fora se alguma leitura dela passou da tolerância.
+  resumoEmendasMcc23(ctx, dados);
+}
+
+/** Pior leitura de cada emenda num lado (com o rolo), pra versão final. */
+function piorLeituraMcc23(dados: LeituraSegmento[], chave: string, lado: string) {
+  let pior: { valor: number; r: NonNullable<ReturnType<typeof roloDaLeitura>> } | undefined;
+  for (const l of dados) {
+    if (l.segmento !== chave || l.lado !== lado || l.valor === undefined || l.valor === null) continue;
+    const r = roloDaLeitura(l);
+    if (!r) continue;
+    if (!pior || Math.abs(l.valor) > Math.abs(pior.valor)) pior = { valor: l.valor, r };
+  }
+  return pior;
+}
+
+/**
+ * Versão "medida final": uma linha por emenda, a pior leitura de cada lado
+ * (com o rolo) e a situação — o que ficou fora, sem repetir a folha inteira.
+ */
+function pdfPassLineMcc23Final(ctx: Ctx, dados: LeituraSegmento[]) {
+  linhaInfo(ctx, "PIOR LEITURA DE CADA LADO EM CADA EMENDA", [LEGENDA_FORA]);
+  const linhasCalc = EMENDAS_MCC23.map((emenda) => {
+    const lados = (["ACIONADO", "NAO_ACIONADO"] as const).map((lado) => piorLeituraMcc23(dados, emenda.chave, lado));
+    const lidos = lados.filter((x) => x !== undefined);
+    const situacao = lidos.length === 0 ? "" : lidos.some((x) => leituraForaMcc23(x!.valor)) ? "FORA" : "OK";
+    return { emenda, lados, situacao };
+  });
+  const situacaoLado = (x: ReturnType<typeof piorLeituraMcc23>) =>
+    x === undefined ? "" : leituraForaMcc23(x.valor) ? "FORA" : "OK";
+  desenharTabela(
+    ctx,
+    [
+      { header: "EMENDA", width: 55, alinhar: "centro" },
+      { header: "PIOR LEITURA", width: 62, alinhar: "centro" },
+      { header: "ROLO", width: 96 },
+      { header: "SITUAÇÃO", width: 52, alinhar: "centro" },
+      { header: "PIOR LEITURA", width: 62, alinhar: "centro" },
+      { header: "ROLO", width: 96 },
+      { header: "SITUAÇÃO", width: 52, alinhar: "centro" },
+      { header: "EMENDA", width: 60, alinhar: "centro" },
+    ],
+    linhasCalc.map(({ emenda, lados, situacao }) => [
+      emenda.rotulo.replace("→", "-"),
+      ...lados.flatMap((x) => [
+        x ? fmt(x.valor) : "",
+        x ? `${x.r.desenho}º DES. - ${ROTULO_ROLO_PDF(x.r.rolo.segmento, x.r.rolo.rolo)}` : "",
+        situacaoLado(x),
+      ]),
+      situacao,
+    ]),
+    {
+      larguraTotal: true,
+      grupos: [
+        { titulo: "", colunas: 1 },
+        { titulo: "LADO ACIONADO", colunas: 3 },
+        { titulo: "LADO NÃO ACIONADO", colunas: 3 },
+        { titulo: "", colunas: 1 },
+      ],
+      estiloCelula: (linha, coluna) => {
+        const calc = linhasCalc[linha];
+        if (coluna === 1 || coluna === 4) {
+          const x = calc.lados[coluna === 1 ? 0 : 1];
+          return x && leituraForaMcc23(x.valor) ? ESTILO_FORA_SEG : undefined;
+        }
+        const texto = coluna === 3 ? situacaoLado(calc.lados[0]) : coluna === 6 ? situacaoLado(calc.lados[1]) : coluna === 7 ? calc.situacao : "";
+        if (texto === "FORA") return ESTILO_FORA_SEG;
+        if (texto === "OK") return { cor: COR_OK, fundo: COR_OK_FUNDO, negrito: true };
+        return undefined;
+      },
+    }
+  );
+  resumoEmendasMcc23(ctx, dados);
+}
+
+/** Resumo das emendas fora (as duas versões do PDF terminam com ele). */
+function resumoEmendasMcc23(ctx: Ctx, dados: LeituraSegmento[]) {
+  // A emenda está fora se alguma leitura dela passou da tolerância.
   const foraPorEmenda = EMENDAS_MCC23.map((emenda) => {
     const lidas = dados
       .map((l) => ({ l, r: roloDaLeitura(l) }))
@@ -1314,10 +1390,15 @@ export async function gerarPdfSessao(
   const ctx: Ctx = { doc, font, bold, page, y: PAGE_H - MARGIN };
 
   const ehPassLineMcc4 = sessao.tipoFicha === "PASS_LINE_SEGMENTOS" && sessao.maquina === "MCC4";
+  const ehPassLineMcc23 = sessao.tipoFicha === "PASS_LINE_SEGMENTOS" && sessao.maquina !== "MCC4";
   const versaoGap = ehPassLineMcc4
     ? modoGap === "ATUALIZADO"
       ? "SÓ RESULTADOS"
       : "VERSÃO COMPLETA"
+    : ehPassLineMcc23
+      ? modoGap === "ATUALIZADO"
+        ? "MEDIDA FINAL"
+        : "VERSÃO COMPLETA"
     : sessao.tipoFicha === "GAP" || sessao.tipoFicha === "GAP_MCC4"
       ? modoGap === "ATUALIZADO"
         ? sessao.tipoFicha === "GAP_MCC4"
@@ -1416,7 +1497,8 @@ export async function gerarPdfSessao(
       // MCC2/MCC3 no formato da folha (por emenda). Leituras antigas, no
       // formato de posições soltas, caem na tabela simples abaixo.
       if ((linhas as LeituraSegmento[]).some((l) => roloDaLeitura(l))) {
-        pdfPassLineMcc23(ctx, linhas as LeituraSegmento[]);
+        if (modoGap === "ATUALIZADO") pdfPassLineMcc23Final(ctx, linhas as LeituraSegmento[]);
+        else pdfPassLineMcc23(ctx, linhas as LeituraSegmento[]);
         break;
       }
       // Ordem: segmento em ordem numérica (1, 2, … 17 — antes era por
